@@ -1,0 +1,32 @@
+server {
+  listen        <%= node['nginx']['https_port'] %> proxy_protocol;
+  server_name  "*.com";
+  resolver 127.0.0.1;
+
+  set_real_ip_from 10.0.0.0/8;
+  real_ip_header proxy_protocol;
+  proxy_set_header X-Forwarded-For $remote_addr;
+  keepalive_timeout  60;
+  keepalive_requests  500;
+  proxy_read_timeout 60s;
+  proxy_next_upstream error;
+  
+  location /static {
+    alias        /usr/share/nginx/html;
+    index       index.html index.htm;
+  }
+
+  location  / {
+      set $backend "https://<%= node['base']['metadata']['runtime']['ilb_dns'] %>:<%= node['base']['metadata']['runtime']['ilb_port'] %>";
+      proxy_pass  $backend$uri;
+  }
+
+  location = /favicon.ico {
+    return 204;
+  }
+
+  error_page    500 502 503 504 /50x.html;
+  location = /50x.html {
+    root        /usr/share/nginx/html;
+  }
+}

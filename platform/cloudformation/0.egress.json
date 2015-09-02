@@ -1,0 +1,372 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+
+  "Description" : "This template builds the minimum functionality required to offer a functional Squid proxy behind an internal ELB. It builds one instance in an AutoScaleGroup, configures it with a Public IP address, and attaches it to the ELB.  AutoScaling policies (scale-up & scale-down ) can be added to suit the use case.",
+
+  "Parameters" : {
+    "InstanceType" : {
+      "Description" : "EC2 instance type",
+      "Type" : "String",
+      "Default" : "m3.medium",
+      "AllowedValues" : [ "m3.medium","m3.large","m3.xlarge","m3.2xlarge","c3.large","c3.xlarge","c3.2xlarge"],
+      "ConstraintDescription" : "must be a valid EC2 instance type that supports the chosen AMI."
+    },
+
+    "ServiceTag" : {
+      "Type": "String",
+      "Description" : "A tag value to describe the service",
+      "Default" : "http-proxy"
+    },
+
+    "SecurityMonitoringEndpoint" : {
+      "Type": "String",
+      "Description" : "The endpoint to forward logs to.",
+      "Default" : "forwarders.ksp.kaos.a.intuit.com"
+    },
+
+    "SecurityMonitoringEndpointPort" : {
+      "Type": "String",
+      "Description" : "The TCP Port to forward logs to on the log endpoint."
+    },
+
+    "KeyName" : {
+      "Type": "AWS::EC2::KeyPair::KeyName",
+      "Description" : "The SSH key name"
+    },
+
+    "AMIid": {
+      "Type": "String",
+      "Description": "The AMI to use for the proxy instance(s)."
+    },
+
+    "BastionRange1": {
+      "Type": "String",
+      "Description": "The IP address range (CIDR) for Bastion Host(s).",
+      "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+      "ConstraintDescription": "must be a valid IP CIDR range of the form x.x.x.x/x."
+    },
+
+    "BastionRange2": {
+      "Type": "String",
+      "Description": "The IP address range (CIDR) for Bastion Host(s).",
+      "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+      "ConstraintDescription": "must be a valid IP CIDR range of the form x.x.x.x/x."
+    },
+
+    "SubnetIDsForSquidProxy": {
+      "Type" : "List<AWS::EC2::Subnet::Id>",
+      "Description": "SubnetID of a public subnet to use for the proxy instance(s)."
+    },
+
+    "InstanceName": {
+      "Type": "String",
+      "Description": "Name to use for the Squid Instance.",
+      "Default": "Proxy"
+    },
+
+    "VpcId": {
+      "Type": "AWS::EC2::VPC::Id",
+      "Description": "The VPC ID holding Subnets specified above."
+    },
+
+    "ASGMin": {
+      "Type": "String",
+      "Description": "The minimum number of Instances for the Autoscale group.",
+      "Default" : "1"
+    },
+
+    "ASGDesired": {
+      "Type": "String",
+      "Description": "The Desired number of Instances for the Autoscale group.",
+      "Default" : "1"
+    },
+
+    "ASGMax": {
+      "Type": "String",
+      "Description": "The maximum number of Instances for the Autoscale group.",
+      "Default" : "1"
+    },
+
+    "ProxyPort": {
+      "Type": "String",
+      "Description": "The TCP port number for the proxy to operate on. Common values are 80, 8080 or 3128.",
+      "Default" : "80"
+      },
+
+    "PermittedSquidRange": {
+      "Type": "String",
+      "Description" : "The IP address range (CIDR) that can use the Squid Proxy.",
+      "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+      "ConstraintDescription": "must be a valid IP CIDR range of the form x.x.x.x/x."
+    }
+  },
+
+  "Resources" : {
+
+    "GetArtemisRole": {
+       "Type": "AWS::IAM::Role",
+       "Properties": {
+          "AssumeRolePolicyDocument": {
+             "Version" : "2012-10-17",
+             "Statement": [ {
+                "Effect": "Allow",
+                "Principal": {
+                   "Service": [ "ec2.amazonaws.com" ]
+                },
+                "Action": [ "sts:AssumeRole" ]
+             } ]
+          },
+          "Path": "/"
+       }
+    },
+
+    "RolePolicies": {
+       "Type": "AWS::IAM::Policy",
+       "Properties": {
+          "PolicyName": "GetAretmisAgentFromKAOSBucket",
+          "PolicyDocument": {
+             "Version" : "2012-10-17",
+             "Statement": [ {
+                "Sid": "GetAretmisAgentFromKAOSBucket",
+                "Action": [
+                   "s3:GetObject"
+                ],
+                "Effect": "Allow",
+                "Resource": "arn:aws:s3:::kaos-us-west-2/artemis/agent/*"
+             } ]
+          },
+          "Roles": [ { "Ref": "GetArtemisRole" } ]
+       }
+    },
+
+    "ProxyInstanceProfile": {
+       "Type": "AWS::IAM::InstanceProfile",
+       "Properties": {
+          "Path": "/",
+          "Roles": [ { "Ref": "GetArtemisRole" } ]
+       }
+    },
+
+    "ProxyInternalLoadBalancer":{
+       "Type": "AWS::ElasticLoadBalancing::LoadBalancer",
+       "Properties": {
+         "AccessLoggingPolicy" : {
+              "EmitInterval":5,
+              "Enabled": "true",
+              "S3BucketName": { "Fn::Join" : [ "", [ "robot-h-t003-", { "Ref" : "AWS::Region" } ] ] }
+          },
+          "CrossZone" : "true",
+          "HealthCheck" : {
+               "HealthyThreshold" : "3",
+               "Interval" : "30",
+               "Target" : "TCP:3128",
+               "Timeout" : "5",
+               "UnhealthyThreshold" : "5"
+               },
+          "Listeners" : [ {
+              "InstancePort" : "3128",
+               "InstanceProtocol" : "TCP",
+               "LoadBalancerPort" : { "Ref": "ProxyPort" },
+               "Protocol" : "TCP"
+               } ],
+          "Scheme" : "internal",
+          "SecurityGroups" : [ { "Ref": "ProxyELBInbound"} ],
+          "Subnets" : { "Ref" : "SubnetIDsForSquidProxy" },
+          "Tags" : [
+             { "Key" : "Service", "Value" : { "Ref" : "ServiceTag"} }
+          ]
+       }
+    },
+
+    "SquidInstanceServerGroup" : {
+      "Type" : "AWS::AutoScaling::AutoScalingGroup",
+      "Properties" : {
+        "AvailabilityZones" :   { "Fn::GetAZs" : "AWS::Region" },
+        "VPCZoneIdentifier" : { "Ref" : "SubnetIDsForSquidProxy" },
+        "LoadBalancerNames" : [ { "Ref" : "ProxyInternalLoadBalancer" } ],
+        "LaunchConfigurationName" : { "Ref" : "Ec2InstanceSquid" },
+        "Cooldown" : 300,
+        "HealthCheckGracePeriod" : 600,
+        "HealthCheckType" : "EC2",
+        "Tags" : [
+          { "Key" : "Name", "Value" :  { "Ref" : "InstanceName" },"PropagateAtLaunch" : "true" },
+          { "Key" : "Service", "Value" : { "Ref" : "ServiceTag"}, "PropagateAtLaunch" : "true" }
+        ],
+        "MinSize" :         { "Ref" : "ASGMin" },
+        "DesiredCapacity" : { "Ref" : "ASGDesired" },
+        "MaxSize" :         { "Ref" : "ASGMax" }
+      }
+    },
+
+    "Ec2InstanceSquid" : {
+      "Type" : "AWS::AutoScaling::LaunchConfiguration",
+      "Properties" : {
+        "IamInstanceProfile": { "Ref": "ProxyInstanceProfile" } ,
+        "AssociatePublicIpAddress": "true",
+        "SecurityGroups": [{"Ref": "SquidInbound"}],
+        "KeyName" : { "Ref" : "KeyName" },
+        "ImageId" : { "Ref" : "AMIid" },
+        "InstanceType" : {"Ref" : "InstanceType"},
+        "UserData" : { "Fn::Base64" : { "Fn::Join" : [ "", [
+          "#!/bin/bash -ex","\n",
+          "# Configure the Squid MVP with...\n",
+          "#                               Splunk Forwarder and KAOS Profiler installed\n",
+          "#                               Clean up and remove files used by install\n",
+          "\n",
+          "echo 'ALL: ALL' > /etc/hosts.allow\n",
+          "sed -i 's/PEERDNS=no/PEERDNS=yes/' ",
+            "/etc/sysconfig/network-scripts/ifcfg-eth0\n",
+          "echo 'nameserver 208.67.222.222' > /etc/resolv.conf\n",
+          "echo 'nameserver 208.67.220.220' >> /etc/resolv.conf\n",
+          "yum -y install squid\n",
+          "mv /etc/squid/squid.conf /etc/squid/squid.conf.orig\n",
+          "cat /etc/squid/squid.conf.orig | sed 's/acl CONNECT method CONNECT/acl CONNECT method CONNECT\\nacl bad_url dstdomain \"\\/etc\\/squid\\/bad-sites.squid\"\\ndns_nameservers 208.67.222.222 208.67.220.220/g' | sed 's/http_access deny manager/http_access deny manager\\nhttp_access deny bad_url/g' > /etc/squid/squid.conf\n",
+          "echo \"169.254.169.254\" > /etc/squid/bad-sites.squid\n",
+          "\n",
+          "cd /tmp\n",
+          "METADATA=http://169.254.169.254/2012-01-12/meta-data\n",
+          "HOSTNAME=`curl --noproxy \"*\" -s \"$METADATA/local-hostname\"`\n",
+          "sed -i \"s/ip-10-80-68-28.localdomain/${HOSTNAME}/g\" /etc/sysconfig/network\n",
+          "sysctl kernel.hostname=${HOSTNAME}\n",
+          "#\n",
+          "# Install Splunk if needed\n",
+          "if ( `rpm -q -a | grep -i splunk >/dev/null 2>&1` ) ; then echo \"Splunk Installed\" ; else\n",
+          " mkdir /tmp/splunkforwarder\n",
+          " curl \"s3-us-west-2.amazonaws.com/intu-packages-us-west-2/rhel/6/x86_64/splunkforwarder-6.0.1-189883-linux-2.6-x86_64.rpm\" -o \"/tmp/splunkforwarder/splunkforwarder-6.0.1-189883-linux-2.6-x86_64.rpm\"\n",
+          " yum -y install /tmp/splunkforwarder/splunkforwarder-6.0.1-189883-linux-2.6-x86_64.rpm\n",
+          "fi\n",
+          "# Install AWS CLI if needed\n",
+          "if ( `type aws >/dev/null 2>&1` ) ; then\n",
+          " echo \"AWS cli installed.\"\n",
+          "else\n",
+          " mkdir /tmp/awscli\n",
+          " curl \"https://s3.amazonaws.com/aws-cli/awscli-bundle.zip\" -o \"/tmp/awscli/awscli-bundle.zip\"\n",
+          " unzip /tmp/awscli/awscli-bundle.zip -d /tmp/awscli\n",
+          " mkdir /opt/awscli\n",
+          " /tmp/awscli/awscli-bundle/install -i /opt/awscli\n",
+          " /bin/rm -rf /tmp/awscli\n",
+          " PATH=$PATH:/opt/awscli/bin/\n",
+          "fi\n",
+          "#mkdir /tmp/profiler\n",
+          "#aws s3 cp s3://kaos-us-west-2/artemis/agent/profiler-0.0.2-8.el6.x86_64.rpm /tmp/profiler\n",
+          "# Install Profiler if needed\n",
+          "#if ( `rpm -q -a | grep -i profiler >/dev/null 2>&1` ) ; then echo \"Profiler Installed\" ; else yum -y localinstall /tmp/profiler/profiler-0.0.2-8.el6.x86_64.rpm ; fi\n",
+          "#\n",
+          "# Configure Splunk Forwarder inputs & outputs\n",
+          "#\n",
+          "# Setup Splunk Forwarder inputs.conf\n",
+            "cat << EOF > /opt/splunkforwarder/etc/system/local/inputs.conf\n",
+            "[monitor:///var/log/squid/access.log]\n",
+            "#index = access_log\n",
+            "sourcetype = squid\n",
+            "disabled = false\n",
+            "\n",
+            "[monitor:///var/log/squid/store.log]\n",
+            "#index = cache_store_log\n",
+            "sourcetype = squid\n",
+            "disabled = false\n",
+            "\n",
+            "[monitor:///var/log/squid/cache.log]\n",
+            "#index = cache_log\n",
+            "sourcetype = squid\n",
+            "disabled = false\n",
+            "\n",
+            "[monitor:///var/log/messages]\n",
+            "disabled = false\n",
+            "\n",
+            "[monitor:///var/log/secure]\n",
+            "disabled = false\n",
+            "\n",
+            "[monitor:///var/log/yum]\n",
+            "disabled = false\n",
+            "\n",
+            "[monitor:///var/log/cron]\n",
+            "disabled = false\n",
+            "\n",
+            "[monitor:///var/log/chef]\n",
+            "disabled = false\n",
+            "\n",
+            "[monitor:///var/log/audit/audit.log]\n",
+            "disabled = false\n",
+            "EOF\n",
+          "#\n",
+          "#Setup Splunk Forwarder outputs.conf\n",
+            "cat << EOF > /opt/splunkforwarder/etc/system/local/outputs.conf\n",
+            "[tcpout]\n",
+            "defaultGroup = group1\n",
+            "\n",
+            "[tcpout:group1]\n",
+            "server = ",{ "Ref" : "SecurityMonitoringEndpoint" },":",{ "Ref" : "SecurityMonitoringEndpointPort" },"\n",
+            "useACK = true\n",
+            "\n",
+            "[tcpout-server://",{ "Ref" : "SecurityMonitoringEndpoint" },":",{ "Ref" : "SecurityMonitoringEndpointPort" },"]\n",
+            "sslCertPath = \\$SPLUNK_HOME/etc/auth/server.pem\n",
+            "sslPassword = password\n",
+            "sslRootCAPath = \\$SPLUNK_HOME/etc/auth/cacert.pem\n",
+            "sslVerifyServerCert = false\n",
+            "EOF\n",
+          "#\n",
+            "#Enable splunk forwarder\n",
+            "/opt/splunkforwarder/bin/splunk start --accept-license\n",
+            "/opt/splunkforwarder/bin/splunk enable boot-start\n",
+          "#\n",
+          "#\n",
+          "chkconfig squid on\n",
+          "service squid start\n"
+        ]]}}
+      }
+    },
+
+    "SquidInbound" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "VpcId": {"Ref": "VpcId"},
+        "GroupDescription" : "Squid - Squid Port from internal ELB and SSH inbound from Bastion Range, ICMP from anywhere",
+        "SecurityGroupIngress" : [ {
+          "IpProtocol" : "tcp",
+          "FromPort" : "22",
+          "ToPort" : "22",
+          "CidrIp" : { "Ref" : "BastionRange1" }
+         }, {
+          "IpProtocol" : "tcp",
+          "FromPort" : "22",
+          "ToPort" : "22",
+          "CidrIp" : { "Ref" : "BastionRange2" }
+         }, {
+          "IpProtocol" : "tcp",
+          "FromPort" : "3128",
+          "ToPort" : "3128",
+          "SourceSecurityGroupId" : { "Ref" : "ProxyELBInbound" }
+         }, {
+          "IpProtocol" : "icmp",
+          "FromPort" : "-1",
+          "ToPort" : "-1",
+          "CidrIp" : "0.0.0.0/0"
+        } ]
+      }
+    },
+
+    "ProxyELBInbound" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "VpcId": {"Ref": "VpcId"},
+        "GroupDescription" : "Proxy ELB - Proxy Port from PermittedSquidRange",
+        "SecurityGroupIngress" : [ {
+          "IpProtocol" : "tcp",
+          "FromPort" : { "Ref" : "ProxyPort" },
+          "ToPort" : "3128",
+          "CidrIp" : { "Ref" : "PermittedSquidRange" }
+        } ]
+      }
+  }
+  },
+  "Outputs" : {
+    "Proxy"             : { "Value" : { "Fn::Join" : [ "", [ "http://", { "Fn::GetAtt" : [ "ProxyInternalLoadBalancer", "DNSName" ]},":",{ "Ref" : "ProxyPort" } ]]} },
+    "ProxyHost"         : { "Value": { "Fn::GetAtt" : [ "ProxyInternalLoadBalancer", "DNSName" ]} },
+    "ProxyPort"         : { "Value": { "Ref" : "ProxyPort" } },
+    "ProxyELB"          : { "Value": { "Ref" : "ProxyInternalLoadBalancer" } },
+    "InstanceSquid"     : { "Value" : { "Ref" : "Ec2InstanceSquid" } },
+    "VpcID"             : { "Value" : { "Ref" : "VpcId" } },
+    "Region"            : { "Value" : { "Ref" : "AWS::Region" } }
+  }
+}

@@ -1,0 +1,63 @@
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>com.intuit.sbg</groupId>
+        <artifactId>SBG-QE-Parent-pom</artifactId>
+        <version>1.0.2</version>
+        <relativePath/>
+    </parent>
+
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.intuit.sb.qbo.dpanthula.qbo-dpanthula.tests</groupId>
+    <artifactId>qbo-dpanthula-test-parent-pom</artifactId>
+    <version>1.1.0-dev-SNAPSHOT</version>
+    <name>qbo-dpanthula-test-parent-pom</name>
+    <packaging>pom</packaging>
+
+    <properties>
+        <commonTestBaseVersion>2.1.2</commonTestBaseVersion>
+        <restAssuredVersion>2.4.1</restAssuredVersion>
+        <jdkSourceVersion>1.7</jdkSourceVersion>
+        <jdkTargetVersion>1.7</jdkTargetVersion>
+    </properties>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                        <source>${jdkSourceVersion}</source>
+                        <target>${jdkTargetVersion}</target>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.intuit.tools</groupId>
+            <artifactId>commontestbase-service</artifactId>
+            <version>${commonTestBaseVersion}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.jayway.restassured</groupId>
+            <artifactId>rest-assured</artifactId>
+            <version>${restAssuredVersion}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.testng</groupId>
+            <artifactId>testng</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+        </dependency>
+    </dependencies>
+
+</project>

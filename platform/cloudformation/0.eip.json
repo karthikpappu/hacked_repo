@@ -1,0 +1,19 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+
+  "Description" : "This template creates an elastic ip.",
+
+  "Resources" : {
+
+    "ElasticIP": {
+       "Type" : "AWS::EC2::EIP",
+       "Properties" : {
+          "Domain" : "vpc"
+       }
+    }
+
+  },
+  "Outputs" : {
+    "ElasticIP"            : { "Value" : { "Ref" : "ElasticIP" } }
+  }
+}

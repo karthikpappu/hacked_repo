@@ -1,0 +1,189 @@
+#!/bin/bash
+#################################################################################################
+typesfile=$HOME/.cert-engine-ca-defs
+certman=certman
+renewal_window=$((90*24*60*60))	# 90 days in seconds
+wait_time=90			# in seconds, Venafi processing time
+#################################################################################################
+umask 0077
+
+usage() {
+cat<<EOF
+Usage: cert-engine -S <CN> -t <cert type> -w <passphrase> -n [-A <SubjectAltNames>] [-f] -o <output dir> [-u <username> -p <password>]
+    -S <CN>			: certificates' Common Name (CN).
+    -t <cert type>		: certificate type expressed as a digit. The digit is used as an index of an array defined in \$HOME/.cert-engine-ca-defs.
+    -w <passphrase>		: passphrase for p12, jks files and private key in pem file.
+    -n				: don't encrypt private key in PEM format file.
+    -A <SubjectAltNames>	: subject alternative names (SAN's).
+    -f				: force certificate renewal.
+    -o				: output directory. There will be 3 output files:
+				  <CN>.p12 - PKCS12 format file
+				  <CN>.pem - PEM format file
+				  <CN>.jks - JKS format file
+    -u <username>		: user name for Venafi API URL (does not need to be specified on subsequent runs).
+    -p <password>		: password for Venafi API URL (does not need to be specified on subsequent runs).
+EOF
+exit 1
+}
+
+Which() {
+    cmd="$1"
+    out=$(which $cmd 2>&1 | awk '{print $1}' | grep $cmd)
+    if [[ -n "$out" ]]
+    then
+	return 0
+    else
+	echo "error: $cmd is not available"
+	return 1
+    fi
+}
+p12topem () {
+    Which openssl
+    if [[ $? -eq 0 ]]
+    then
+	openssl pkcs12 -in $outputdir/$CN.p12 -passin pass:$pass $encopt -nomacver | awk '/BEGIN.*PRIVATE KEY/,/END.*PRIVATE KEY/ {print} /BEGIN CERTIFICATE/,/END CERTIFICATE/ {print}' > $outputdir/$CN.pem
+    else
+	echo "error: skipping PEM file generation"
+	return 1
+    fi
+}
+
+p12tojks() {
+    Which keytool
+    if [[ $? -eq 0 ]]
+    then
+	keytool -importkeystore -srckeystore $outputdir/$CN.p12 -destkeystore $outputdir/$CN.jks -srcstoretype PKCS12 -srcstorepass $pass -deststorepass $pass -noprompt
+    else
+	echo "error: skipping JKS file generation"
+	return 1
+    fi
+}
+
+check_renewal_window() {
+    Which openssl
+    if [[ $? -eq 0 ]]
+    then
+	expiration_date=$(openssl pkcs12 -in $outputdir/$CN.p12 -passin pass:$pass -nodes -nomacver | awk '/BEGIN CERTIFICATE/ {buffer=""} /BEGIN CERTIFICATE/,/END CERTIFICATE/ {buffer=buffer $0 "\n"} END {print buffer}' | openssl x509 -text -noout | awk '/Not After/ {sub(".*: ",""); print}')
+	expiration_date=$(date --date="$expiration_date" +%s)
+	current_date=$(date -u +%s)
+
+	if [[ $(($expiration_date-$current_date)) -le $renewal_window ]]
+	then
+	    return 0	# in renewal window
+	else
+	    return 1	# not in renewal window
+	fi
+    else
+	echo "error: skipping renewal window check"
+	return 1
+    fi
+}
+
+retrieve() {
+    $certman retrieve $authopt -o $outputdir/$CN.p12 -P -c -w $pass "${venafi_folder[$type]}\\${CN}"
+}
+
+request() {
+    if [[ -n "$SAN" ]]; then sanopt="-A $SAN"; else sanopt=""; fi
+    $certman request $authopt -P "${venafi_folder[$type]}" -T "${venafi_ca_template[$type]}" -S "${CN}" -U "$ORG_UNIT" -O "$ORG" -C "$CITY" -s "$STATE" -c "$COUNTRY" $sanopt
+    sleep $wait_time
+    retrieve
+}
+
+renew() {
+    $certman renew $authopt "${venafi_folder[$type]}\\${CN}"
+    sleep $wait_time
+    retrieve
+}
+
+revoke() {
+    $certman revoke $authopt -R 4 -f -C "revoking to force renewal" "${venafi_folder[$type]}\\${CN}"
+    sleep $wait_time
+}
+
+while getopts ":S:t:w:nA:fo:u:p:" opt
+do
+    case $opt in
+    S)
+	CN=$OPTARG
+    ;;
+    t)
+	type=$OPTARG
+    ;;
+    w)
+	pass=$OPTARG
+    ;;
+    n)
+	encopt="-nodes"
+    ;;
+    A)
+	SAN=$OPTARG
+    ;;
+    f)
+	force_renewal=true
+    ;;
+    o)
+	outputdir=$OPTARG
+    ;;
+    u)
+	username=$OPTARG
+    ;;
+    p)
+	password=$OPTARG
+    ;;
+    *)
+	usage
+    ;;
+    esac
+done
+
+# Verify usage syntax
+shift $((OPTIND-1))
+if [[ -n "$1" || -z "$CN" || -z "$type" || -z "$pass" || -z "$outputdir" ]]; then usage; fi
+if [[ ! -d $outputdir ]]; then echo "directory \"$outputdir\" does not exist"; exit 2; fi
+if [[ -z "$encopt" ]]; then encopt="-passout pass:$pass"; fi
+if [[ -n "$username" && -n "$password" ]]; then authopt="-u $username -p $password"; fi
+
+if [[ ! -f $typesfile ]]
+then
+    echo "$typesfile: no such file"
+    exit 1
+else
+    . $typesfile
+fi
+#
+# action starts here
+#
+retrieve; rc=$?
+
+case $rc in
+  0)
+    if [[ "$force_renewal" = "true" ]]
+    then
+	revoke
+	request; rc=$?
+    else
+	check_renewal_window
+	if [[ $? -eq 0 ]]
+	then
+	    renew; rc=$?
+	fi
+    fi
+  ;;
+  1|2|3|4)
+  ;;
+  200)
+    echo "certificate object exists but couldn't be retrieved"
+  ;;
+  *)
+    request; rc=$?
+  ;;
+esac
+
+if [[ $rc -eq 0 ]]
+then
+    p12topem
+    p12tojks
+fi
+
+exit $rc

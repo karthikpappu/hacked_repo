@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# test the current jboss to see if it is running (if it returns "offline" or "online" it is running)
+if [ "1" == `wget -nv -O- "http://localhost:8080/qbpc/health.html?action=getstatus" | grep -i "line" | wc -l ` ]; then
+        echo Tomcat is already running
+        exit -1
+fi
+
+echo Starting Tomcat
+#$(dirname $0)/spcrun.start
+/usr/local/tomcat/bin/startup.sh
+
+echo Waiting for Tomcat
+#sleep 60
+sleep 30
+
+# wait for the server to first respond with "offline"
+while [ "1" != `wget -nv -O- "http://localhost:8080/qbpc/health.html?action=getstatus" | grep -i "offline" | wc -l ` ]; do
+        echo Waiting for http://localhost:8080/qbpc/health.html?action=getstatus
+        sleep 5
+done
+
+sleep 10
+
+#warmUpOutput=`wget -O- "http://localhost:8181/admin/probe?probe=WARMUP"`
+#echo Warm up the server
+#if [ "1" !=  `echo "$warmUpOutput" | grep "Completed: SUCCESS" | wc -l` ] ; then
+#	echo Server did not pass its warmup tests
+#	echo $warmUpOutput
+#exit -1
+#fi
+
+echo Marking server as online
+wget -O- "http://localhost:8080/qbpc/health.html?action=on"
+
+# verify that the server has been marked as online
+while [ "1" != `wget  -nv -O- "http://localhost:8080/qbpc/health.html?action=getstatus" | grep -i "online" | wc -l ` ]; do
+        echo Waiting for http://localhost:8080/qbpc/health.html?action=getstatus
+        sleep 5
+done
+
+echo Server has been started, warmed-up, and marked online
+

@@ -1,0 +1,3 @@
+# Berksfile referencing all Intuit made cookbooks
+
+source "https://supermarket.platform.intuit.net"

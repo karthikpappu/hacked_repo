@@ -1,0 +1,35 @@
+{
+   "AWSTemplateFormatVersion" : "2010-09-09",
+   "Description" : "Simple Standalone ENI",
+   "Parameters" : {
+      "Name": {
+        "Description" : "name for ENI",
+        "Default": "",
+        "Type" : "String"
+     },
+     "SecGrps" : {
+        "Description" : "Security Groups for ENI",
+        "Type" : "CommaDelimitedList"
+     },
+     "SubnetId": {
+        "Description" : "Subnet Id for ENI",
+        "Type" : "String"
+     }
+  },
+   "Resources" : {
+      "ENI" : {
+         "Type" : "AWS::EC2::NetworkInterface",
+         "Properties" : {
+            "Tags": [ { "Key":"Name", "Value": { "Ref": "Name"} }],
+            "Description": { "Ref": "Name"},
+            "SourceDestCheck": "false",
+            "GroupSet": { "Ref": "SecGrps"},
+            "SubnetId": { "Ref": "SubnetId"}
+         }
+      }
+   },
+   "Outputs" : {
+    "ENI"            : { "Value" : { "Ref" : "ENI" } },
+    "IP"             : { "Value": { "Fn::GetAtt": [ "ENI", "PrimaryPrivateIpAddress" ]} }
+  }
+}        

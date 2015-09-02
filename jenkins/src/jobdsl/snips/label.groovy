@@ -1,0 +1,4 @@
+def c = {
+
+	label ( 'slingshot' )
+}

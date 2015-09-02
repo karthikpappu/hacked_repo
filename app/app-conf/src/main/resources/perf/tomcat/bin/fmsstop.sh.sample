@@ -1,0 +1,16 @@
+#!/bin/bash
+
+echo Marking server as offline
+wget -O- "http://localhost:8080/qbpc/health.html?action=off"
+
+# verify that the server has been marked as offline
+if [ "1" != `wget -nv -O- "http://localhost:8080/qbpc/health.html?action=getstatus" | grep -i "offline" | wc -l ` ]; then
+ 		echo Server did not respond as Offline.   Run /usr/local/tomcat/bin/shutdown.sh manually to stop server
+		exit -1;
+fi
+
+echo Server marked Offline.  Waiting 20 seconds...
+sleep 20
+
+echo Tomcat Shutdown...
+/usr/local/tomcat/bin/shutdown.sh

@@ -1,0 +1,116 @@
+apply plugin: 'base'
+
+buildscript {
+    dependencies {
+        classpath 'org.jenkins-ci.plugins:job-dsl-core:1.28'
+    }
+}
+
+configurations { 
+  workflow
+  all { 
+    // Override how long gradle waits to check on later dynamic versions
+    // see: http://www.gradle.org/docs/current/userguide/dependency_management.html#sec:cache_command_line_options
+    resolutionStrategy.cacheDynamicVersionsFor 1, 'minutes'
+  }
+}
+
+dependencies { 
+  workflow 'com.intuit.sbg.tools.workflow:jobdsl-workflow:1.2.0-SNAPSHOT:sources@jar'
+}
+
+def scriptDir=file("${buildDir}/jobdsl")
+def jobDir = file("${buildDir}/jobs")
+def viewDir = file("${buildDir}/views")
+
+task createTargetDirs() << { 
+  scriptDir.mkdirs()
+  jobDir.mkdirs()
+  viewDir.mkdirs()
+}
+
+task explodeWorkflowEngine(type: Copy){
+  from zipTree(configurations.workflow.singleFile)
+  into scriptDir
+}
+
+task copyJobDslFiles(type: Copy, dependsOn: ['explodeWorkflowEngine']) { 
+  from 'src/jobdsl'
+  into scriptDir
+}
+
+import javaposse.jobdsl.dsl.DslScriptLoader
+import javaposse.jobdsl.dsl.FileJobManagement
+import javaposse.jobdsl.dsl.GeneratedItems
+import javaposse.jobdsl.dsl.GeneratedJob
+import javaposse.jobdsl.dsl.GeneratedView
+import javaposse.jobdsl.dsl.ScriptRequest
+import javaposse.jobdsl.dsl.NameNotProvidedException
+import javaposse.jobdsl.dsl.ConfigurationMissingException
+
+class MyFileJobManagement extends FileJobManagement {
+
+    File jobDir
+    File viewDir
+
+	MyFileJobManagement(File root, File jobDir, File viewDir) {
+		super(root)	
+        this.jobDir = jobDir
+        this.viewDir = viewDir
+    }
+
+    // update to support a different path where to write config files
+	boolean createOrUpdateConfig(String jobName, String config, boolean ignoreExisting)
+        throws NameNotProvidedException, ConfigurationMissingException {
+        validateUpdateArgs(jobName, config)
+        new File("${jobDir.path}/${jobName}${ext}").write(config)
+        true
+    }	
+
+    void createOrUpdateView(String viewName, String config, boolean ignoreExisting) {
+        validateUpdateArgs(viewName, config)
+
+        new File("${viewDir.path}/${viewName}${ext}").write(config)
+    }
+
+}
+
+task('jobDsl', dependsOn: ['createTargetDirs','explodeWorkflowEngine','copyJobDslFiles']) << {
+
+    def map = [
+        'FULL_BRANCH_PATH': "master",
+        'INITIAL_BRANCHES': "",
+        "FEATURE_BRANCH" : "",
+        "RELEASE_BRANCH" : "",
+        "HOTFIX_BRANCH" : "",
+        "PIPELINE" : pipeline,
+        "PRODUCT" : product,
+        "COMPONENT" : component,
+        "COMPONENT_TYPE" : "UI",
+        "SOURCE_REPOSITORY" : sourceRepository,
+        // provided by jenkins
+        "JOBDSL_ROOTDIR" : scriptDir,
+        "aws_access_key_id" : "test-access-key-val",
+        "aws_secret_key_id" : "test-secret-key-val",
+        "profile" : "sbfs-bogus-testing-profile-name-preprod",
+        "region" : "us-west-2",
+        "contact_email_or_dl" : "carmichael_blankenship@intuit.com",
+        "alternateTestTemplate" : "",
+    	"enableSauceConnect" : "true"
+    ]
+
+    File wd = scriptDir
+    URL wdURL = wd.toURI().toURL()
+
+    FileJobManagement jm = new MyFileJobManagement(wd,jobDir,viewDir)
+    jm.parameters.putAll(map)
+
+    def scripts = ['jobdsl.groovy']
+
+    scripts.each { scriptName ->
+        println "processing: ${scriptName}"
+	   	ScriptRequest request = new ScriptRequest(scriptName, null, wdURL, false)
+        
+        GeneratedItems generatedItems = DslScriptLoader.runDslEngine(request, jm)
+    }
+}

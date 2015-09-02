@@ -1,0 +1,513 @@
+{
+	"create-repo" : {
+		"sub-jobs" : []
+	},
+
+	"initial-setup" : {
+		"parameters" : [
+			{ "name" : "full_product", "type" : "string", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "profile", "type" : "string", "default-value" : "@@profile@@" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "full_branch", "type" : "string", "default-value" : "@@FULL_BRANCH_PATH@@" }
+		],
+		"sub-jobs" : ["setup-aws-profile", "validate-pcc-setup", "validate-slingshot-setup", "setup-aws-ssh-keys", "create-private-s3-bucket","create-secrets-s3-bucket", "setup-aws-inputs", "setup-aws-ingest-default-secrets", "setup-aws-bastion", "setup-aws-egress"]
+	},
+
+	"create-aws-user" : {
+		"parameters" : [
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" }
+		],
+		"sub-jobs" : []
+	},
+
+	"setup-aws-profile" : {
+		"parameters" : [
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile@@" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "aws_access_key_id", "type" : "string", "input-value" : "${aws_access_key_id}", "default-value" : "" },
+			{ "name" : "aws_secret_key_id", "type" : "string", "input-value" : "${aws_secret_key_id}", "default-value" : "" },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" }
+		],
+		"sub-jobs" : []
+	},
+
+	"validate-pcc-setup" : {
+		"parameters" : [
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile@@" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" }
+		],
+		"sub-jobs" : []
+	},
+
+	"validate-slingshot-setup" : {
+		"parameters" : [
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile@@" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" }
+		],
+		"sub-jobs" : []
+	},
+
+	"setup-aws-ssh-keys" : {
+		"parameters" : [
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile@@" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "DELETE", "type" : "boolean", "input-value" : "${DELETE}", "default-value" : false },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" }
+		],
+		"sub-jobs" : []
+	},
+
+        "create-private-s3-bucket" : {
+                "parameters" : [
+                        { "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+                        { "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile@@" },
+                        { "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+                        { "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+                        { "name" : "accountid", "type" : "string", "default-value" : "", "description" : "AWS account ID of the production account" },
+                        { "name" : "action", "type" : "choice", "input-value" : "create", "default-value" : ["create","delete","update"] }
+                ],
+                "sub-jobs" : []
+        },
+
+	"create-secrets-s3-bucket" : {
+		"parameters" : [
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile@@" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+                        { "name" : "action", "type" : "choice", "input-value" : "create", "default-value" : ["create","delete"] }
+		],
+		"sub-jobs" : []
+	},
+
+	"setup-aws-reset-profile" : {
+		"parameters" : [
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile@@" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" }
+		],
+		"sub-jobs" : []
+	},
+
+	"setup-aws-ingest-default-secrets" : {
+		"parameters" : [
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile@@" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "DELETE", "type" : "boolean", "input-value" : "${DELETE}", "default-value" : false },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" }
+		],
+		"sub-jobs" : []
+	},
+
+ 	"setup-aws-ingest-custom-secrets" : {
+        "parameters" : [
+            { "name" : "secret_name", "type" : "string", "default-value" : "" },
+	    { "name" : "PRODUCT", "type" : "string", "input-value" : "${PRODUCT}", "default-value" : "@@product@@" },
+            { "name" : "COMPONENT", "type" : "string", "input-value" : "${COMPONENT}", "default-value" : "@@component@@" },
+            { "name" : "source_repo", "type" : "string", "input-value" : "${source_repo}", "default-value" : "SBG/@@product@@-@@component@@" },
+	    { "name" : "source_repo_branch", "type" : "string", "input-value" : "${source_repo_branch}", "default-value" : "master" },
+            { "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+            { "name" : "profile", "type" : "string", "default-value" : "@@profile@@" },
+            { "name" : "environment", "type" : "choice", "input-value" : "${environment}", "default-value" : ["ci","dev","qa","e2e","perf","stage","prod"] },
+            { "name" : "role", "type" : "choice", "input-value" : "${role}", "default-value" : ["app","web","admin","rds_mysql","rds_oracle"] }
+        ],
+         "sub-jobs" : []
+    },
+
+	"setup-aws-inputs" : {
+		"parameters" : [
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile@@" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "operator_email", "type" : "string", "input-value" : "${operator_email}", "default-value" : "" },
+			{ "name" : "SecurityMonitoringEndpointPort", "type" : "string", "input-value" : "${SecurityMonitoringEndpointPort}", "default-value" : "arn:aws:kms:us-west-2:712380975565:key/3f21a3c1-83e9-4c83-8d9a-de66328e53d5" },
+			{ "name" : "DELETE", "type" : "boolean", "input-value" : "${DELETE}", "default-value" : false },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" }
+		],
+		"sub-jobs" : []
+	},
+
+	"setup-aws-bastion" : {
+		"parameters" : [
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile@@" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "action", "type" : "choice", "input-value" : "create", "default-value" : ["create","delete"] }
+		],
+		"sub-jobs" : []
+	},
+
+	"setup-aws-egress" : {
+		"parameters" : [
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile@@" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "DELETE", "type" : "boolean", "input-value" : "${DELETE}", "default-value" : false },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" }
+		],
+		"sub-jobs" : []
+	},
+
+        "setup-aws-generate-certs-ppd" : {
+                "parameters" : [
+                        { "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+                        { "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile@@" },
+                        { "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+                        { "name" : "SAN", "type" : "string", "input-value" : "", "default-value" : "" },
+                        { "name" : "Force_Renewal", "type" : "boolean", "input-value" : "", "default-value" : false },
+                        { "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" }
+                ],
+                "sub-jobs" : []
+        },
+
+        "setup-aws-generate-certs-prd" : {
+                "parameters" : [
+                        { "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+                        { "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile@@" },
+                        { "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+                        { "name" : "env", "type" : "choice", "input-value" : "", "default-value" : ["stg","prd"] },
+                        { "name" : "SAN", "type" : "string", "input-value" : "", "default-value" : "" },
+                        { "name" : "Force_Renewal", "type" : "boolean", "input-value" : "", "default-value" : false },
+                        { "name" : "EV_certificate", "type" : "boolean", "input-value" : "", "default-value" : false },
+                        { "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" }
+                ],
+                "sub-jobs" : []
+        },
+
+    "setup-aws-rds" : {
+        "parameters" : [
+            { "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+            { "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile@@" },
+            { "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+            { "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "env", "type" : "string", "default-value" : "ci" },
+			{ "name" : "branch", "type" : "string", "default-value" : "master" },
+			{ "name" : "prefix", "type" : "string", "default-value" : "" },
+            { "name" : "type", "type" : "choice", "input-value" : "mysql", "default-value" : ["mysql","oracle"] },
+            { "name" : "action", "type" : "choice", "input-value" : "create", "default-value" : ["create","delete","rotate"] }
+        ],
+        "sub-jobs" : []
+    },
+
+	"cleanup-unused-ebs" : {
+		"parameters" : [
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile@@" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" }
+		],
+		"sub-jobs" : []
+	},
+
+	"build-environment" : {
+		"sub-jobs" : []
+	},
+
+	"build-commit" : {
+		"parameters" : [
+			{ "name" : "Version", "type" : "string", "default-value" : "", "description" : "Release Version of the Artifact" },
+			{ "name" : "StagingRepoId", "type" : "string", "default-value" : "", "description" : "Staging repository ID" },
+			{ "name" : "full_product", "type" : "string", "default-value" : "@@product@@-@@component@@" },
+ 			{ "name" : "profile", "type" : "string", "default-value" : "@@profile@@" },
+ 			{ "name" : "product", "type" : "string", "default-value" : "@@product@@" },
+			{ "name" : "component", "type" : "string", "default-value" : "@@component@@" },
+			{ "name" : "region", "type" : "choice", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "build_version", "type" : "string", "default-value" : "lastSuccessfulBuild" },
+			{ "name" : "artifact_url", "type" : "string", "default-value" : "" },
+			{ "name" : "full_branch", "type" : "string", "default-value" : "@@FULL_BRANCH_PATH@@" },
+			{ "name" : "env", "type" : "string", "default-value" : "ci" }
+		],
+		"sub-jobs" : [],
+		"scm-polling" : ["H/10 * * * *"]
+
+	},
+
+	"build-secondary" : {
+		"sub-jobs" : []
+	},
+
+	"deploy-ci" : {
+		"parameters" : [
+			{ "name" : "Version", "type" : "string", "default-value" : "", "input-value" : "${Version}", "description" : "Release Version of the Artifact" },
+			{ "name" : "StagingRepoId", "type" : "string", "default-value" : "", "input-value" : "${StagingRepoId}", "description" : "Staging repository ID" },
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile@@" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "build_version", "type" : "string", "input-value" : "${BUILD_NUMBER}", "default-value" : "lastSuccessfulBuild" },
+			{ "name" : "artifact_url", "type" : "string", "input-value" : "s3://${profile}-${region}/${BUILD_TAG}", "default-value" : "" },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" },
+			{ "name" : "env", "type" : "string", "input-value" : "${env}", "default-value" : "ci" }
+		],
+		"template" : "deploy-slingshot",
+		"sub-jobs" : []
+	},
+
+	"test-ci" : {
+		"parameters" : [
+			{ "name" : "Version", "type" : "string", "default-value" : "", "input-value" : "${Version}", "description" : "Release Version of the Artifact" },
+			{ "name" : "StagingRepoId", "type" : "string", "default-value" : "", "input-value" : "${StagingRepoId}", "description" : "Staging repository ID" },
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile@@" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "build_version", "type" : "string", "input-value" : "${build_version}", "default-value" : "lastSuccessfulBuild" },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" },
+			{ "name" : "artifact_url", "type" : "string", "input-value" : "${artifact_url}", "default-value" : "" },
+			{ "name" : "env", "type" : "string", "input-value" : "${env}", "default-value" : "ci" }
+		],
+		"template" : "<% print \"@@alternateTestTemplate@@\" ? \"@@alternateTestTemplate@@\" : \"test-ci-@@COMPONENT_TYPE@@\" %>",
+		"sub-jobs" : []
+	},
+
+	"deploy-qa" : {
+		"parameters" : [
+			{ "name" : "Version", "type" : "string", "default-value" : "", "input-value" : "${Version}", "description" : "Release Version of the Artifact" },
+			{ "name" : "StagingRepoId", "type" : "string", "default-value" : "", "input-value" : "${StagingRepoId}", "description" : "Staging repository ID" },
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile@@" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "build_version", "type" : "string", "input-value" : "${build_version}", "default-value" : "lastSuccessfulBuild" },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" },
+			{ "name" : "artifact_url", "type" : "string", "input-value" : "${artifact_url}", "default-value" : "" },
+			{ "name" : "env", "type" : "string", "default-value" : "qa" }
+		],
+		"template" : "deploy-slingshot",
+		"sub-jobs" : [],
+		"comment.1" : "<% print \"@@COMPONENT_TYPE@@\" == \"UI\" ? \"true\" : \"false\" %>",
+		"comment.2" : "change the above 'comment.1' to 'manual' if we want QA deployment to be manual for UI apps",
+		"comment.3" : "<% print \"@@branchName@@\" == \"master\" ? \"true\" : \"false\" %>",
+		"comment.4" : "change the above 'comment.3' to 'manual' to make this job manual only for the master branch"
+	},
+
+	"test-qa" : {
+		"parameters" : [
+			{ "name" : "Version", "type" : "string", "default-value" : "", "input-value" : "${Version}", "description" : "Release Version of the Artifact" },
+			{ "name" : "StagingRepoId", "type" : "string", "default-value" : "", "input-value" : "${StagingRepoId}", "description" : "Staging repository ID" },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" },
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "sbfs-@@product@@-@@component@@-preprod" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "build_version", "type" : "string", "input-value" : "${build_version}", "default-value" : "lastSuccessfulBuild" },
+			{ "name" : "artifact_url", "type" : "string", "input-value" : "${artifact_url}", "default-value" : "" },
+			{ "name" : "env", "type" : "string", "default-value" : "qa" }
+		],
+		"template" : "<% print \"@@alternateTestTemplate@@\" ? \"@@alternateTestTemplate@@\" : \"test-qa-@@COMPONENT_TYPE@@\" %>",
+		"sub-jobs" : []
+	},
+
+	"deploy-e2e" : {
+		"parameters" : [
+			{ "name" : "Version", "type" : "string", "default-value" : "", "input-value" : "${Version}", "description" : "Release Version of the Artifact" },
+			{ "name" : "StagingRepoId", "type" : "string", "default-value" : "", "input-value" : "${StagingRepoId}", "description" : "Staging repository ID" },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" },
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "sbfs-@@product@@-@@component@@-preprod" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "build_version", "type" : "string", "input-value" : "${build_version}", "default-value" : "lastSuccessfulBuild" },
+			{ "name" : "artifact_url", "type" : "string", "input-value" : "${artifact_url}", "default-value" : "" },
+			{ "name" : "env", "type" : "string", "default-value" : "e2e" }
+		],
+		"template" : "deploy-slingshot",
+		"sub-jobs" : [],
+		"manual" : "<% print \"@@COMPONENT_TYPE@@\" == \"UI\" ? \"true\" : \"false\" %>"
+	},
+
+	"test-e2e" : {
+		"parameters" : [
+			{ "name" : "Version", "type" : "string", "default-value" : "", "input-value" : "${Version}", "description" : "Release Version of the Artifact" },
+			{ "name" : "StagingRepoId", "type" : "string", "default-value" : "", "input-value" : "${StagingRepoId}", "description" : "Staging repository ID" },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" },
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "sbfs-@@product@@-@@component@@-preprod" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "build_version", "type" : "string", "input-value" : "${build_version}", "default-value" : "lastSuccessfulBuild" },
+			{ "name" : "artifact_url", "type" : "string", "input-value" : "${artifact_url}", "default-value" : "" },
+			{ "name" : "env", "type" : "string", "default-value" : "e2e" }
+		],
+		"template" : "<% print \"@@alternateTestTemplate@@\" ? \"@@alternateTestTemplate@@\" : \"test-e2e-@@COMPONENT_TYPE@@\" %>",
+		"sub-jobs" : []
+	},
+
+	"deploy-perf" : {
+		"parameters" : [
+			{ "name" : "Version", "type" : "string", "default-value" : "", "input-value" : "${Version}", "description" : "Release Version of the Artifact" },
+			{ "name" : "StagingRepoId", "type" : "string", "default-value" : "", "input-value" : "${StagingRepoId}", "description" : "Staging repository ID" },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" },
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "sbfs-@@product@@-@@component@@-preprod" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "build_version", "type" : "string", "input-value" : "${build_version}", "default-value" : "lastSuccessfulBuild" },
+			{ "name" : "artifact_url", "type" : "string", "input-value" : "${artifact_url}", "default-value" : "" },
+			{ "name" : "env", "type" : "string", "default-value" : "perf" }
+		],
+		"template" : "deploy-slingshot",
+		"sub-jobs" : [],
+		"manual" : "<% print \"@@COMPONENT_TYPE@@\" == \"UI\" ? \"true\" : \"false\" %>"
+
+	},
+
+	"test-perf" : {
+		"parameters" : [
+			{ "name" : "Version", "type" : "string", "default-value" : "", "input-value" : "${Version}", "description" : "Release Version of the Artifact" },
+			{ "name" : "StagingRepoId", "type" : "string", "default-value" : "", "input-value" : "${StagingRepoId}", "description" : "Staging repository ID" },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" },
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "sbfs-@@product@@-@@component@@-preprod" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "build_version", "type" : "string", "input-value" : "${build_version}", "default-value" : "lastSuccessfulBuild" },
+			{ "name" : "artifact_url", "type" : "string", "input-value" : "${artifact_url}", "default-value" : "" },
+			{ "name" : "env", "type" : "string", "default-value" : "perf" }
+		],
+		"template" : "<% print \"@@alternateTestTemplate@@\" ? \"@@alternateTestTemplate@@\" : \"test-perf\" %>",
+		"manual" : false,
+		"sub-jobs" : ["perf-jmeter"]
+	},
+
+	"perf-jmeter" : {
+		"parameters" : [
+			{ "name" : "NEW_PERF_CLOUD_ON_DEMAND", "type" : "boolean", "default-value" : false, "input-value" : "false", "description" : "when checked, a new performance stack is created in AWS before tests are run" },
+			{ "name" : "TERMINATE_STACK_ON_FINISH", "type" : "boolean", "default-value" :false, "input-value" : "false", "description" : "when checked, the performance stack is deleted in AWS after tests are run" },
+			{ "name" : "STACK_GROUP", "type" : "string", "default-value" : "qbo-cluster-router-jmeter", "input-value" : "qbo-cluster-router-jmeter", "description" : "the name of the AWS stack to use" }
+		],
+		"remote" : {
+			"host" : "preprod deploy server (oppdfmsis300.corp.intuit.net)",
+			"poll" : "30",
+			"token" : "cf7260c02acbd63041c6c5e848fc1b1b",
+			"block" : true
+		},
+		"sub-jobs" : []
+	},
+
+	"analyze-static-code" : {
+		"sub-jobs" : []
+	},
+
+	"analyze-security" : {
+		"sub-jobs" : []
+	},
+
+	"analyze-globalization" : {
+		"sub-jobs" : []
+	},
+
+	"merge-out" : {
+		"manual" : "true",
+		"sub-jobs" : []
+	},
+
+	"merge-in" : {
+		"sub-jobs" : []
+	},
+
+	"store-prod" : {
+		"parameters" : [
+			{ "name" : "Version", "type" : "string", "default-value" : "", "input-value" : "${Version}", "description" : "Release Version of the Artifact" },
+			{ "name" : "StagingRepoId", "type" : "string", "default-value" : "", "input-value" : "${StagingRepoId}", "description" : "Staging repository ID" },
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" },
+			{ "name" : "profile_production", "type" : "string", "input-value" : "${profile_production}", "default-value" : "@@profile_production@@", "description" : "Production AWS profile" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile@@", "description" : "PreProd AWS profile" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "build_version", "type" : "string", "input-value" : "${build_version}", "default-value" : "lastSuccessfulBuild" },
+			{ "name" : "artifact_url", "type" : "string", "input-value" : "${artifact_url}", "default-value" : "" },
+			{ "name" : "env", "type" : "string", "default-value" : "prod" }
+		],
+		"manual" : true,
+		"sub-jobs" : []
+	},
+
+	"deploy-stage" : {
+		"parameters" : [
+			{ "name" : "Version", "type" : "string", "default-value" : "", "input-value" : "${Version}", "description" : "Release Version of the Artifact" },
+			{ "name" : "StagingRepoId", "type" : "string", "default-value" : "", "input-value" : "${StagingRepoId}", "description" : "Staging repository ID" },
+			{ "name" : "full_product", "type" : "string", "input-value" : "${product}-${component}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile_production}", "default-value" : "@@profile_production@@", "description" : "Production AWS profile" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "build_version", "type" : "string", "input-value" : "${build_version}", "default-value" : "lastSuccessfulBuild" },
+			{ "name" : "artifact_url", "type" : "string", "input-value" : "${prod_url}", "default-value" : "" },
+			{ "name" : "env", "type" : "string", "default-value" : "stage" }
+		],
+		"template" : "deploy-slingshot",
+		"sub-jobs" : []
+	},
+
+	"test-stage" : {
+		"parameters" : [
+			{ "name" : "Version", "type" : "string", "default-value" : "", "input-value" : "${Version}", "description" : "Release Version of the Artifact" },
+			{ "name" : "StagingRepoId", "type" : "string", "default-value" : "", "input-value" : "${StagingRepoId}", "description" : "Staging repository ID" },
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile_production@@", "description" : "Production AWS profile" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "build_version", "type" : "string", "input-value" : "${build_version}", "default-value" : "lastSuccessfulBuild" },
+			{ "name" : "artifact_url", "type" : "string", "input-value" : "${artifact_url}", "default-value" : "" },
+			{ "name" : "env", "type" : "string", "default-value" : "stage" }
+		],
+		"template" : "<% print \"@@alternateTestTemplate@@\" ? \"@@alternateTestTemplate@@\" : \"test-stage-@@COMPONENT_TYPE@@\" %>",
+		"sub-jobs" : []
+	},
+
+	"deploy-prod" : {
+		"parameters" : [
+			{ "name" : "Version", "type" : "string", "default-value" : "", "input-value" : "${Version}", "description" : "Release Version of the Artifact" },
+			{ "name" : "StagingRepoId", "type" : "string", "default-value" : "", "input-value" : "${StagingRepoId}", "description" : "Staging repository ID" },
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile_production}", "default-value" : "@@profile_production@@", "description" : "Production AWS profile" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "build_version", "type" : "string", "input-value" : "${build_version}", "default-value" : "lastSuccessfulBuild" },
+			{ "name" : "artifact_url", "type" : "string", "input-value" : "${artifact_url}", "default-value" : "" },
+			{ "name" : "env", "type" : "string", "default-value" : "prod" }
+		],
+		"template" : "deploy-slingshot",
+		"manual" : true,
+		"sub-jobs" : []
+	},
+
+	"test-prod" : {
+		"parameters" : [
+			{ "name" : "Version", "type" : "string", "default-value" : "", "input-value" : "${Version}", "description" : "Release Version of the Artifact" },
+			{ "name" : "StagingRepoId", "type" : "string", "default-value" : "", "input-value" : "${StagingRepoId}", "description" : "Staging repository ID" },
+			{ "name" : "full_product", "type" : "string", "input-value" : "${full_product}", "default-value" : "@@product@@-@@component@@" },
+			{ "name" : "full_branch", "type" : "string", "input-value" : "${full_branch}", "default-value" : "@@FULL_BRANCH_PATH@@" },
+			{ "name" : "profile", "type" : "string", "input-value" : "${profile}", "default-value" : "@@profile_production@@", "description" : "Production AWS profile" },
+			{ "name" : "region", "type" : "choice", "input-value" : "${region}", "default-value" : ["us-west-2","us-west-1","us-east-1","sa-east-1"] },
+			{ "name" : "proxy", "type" : "string", "default-value" : "qy1prdproxy01.ie.intuit.net" },
+			{ "name" : "build_version", "type" : "string", "input-value" : "${build_version}", "default-value" : "lastSuccessfulBuild" },
+			{ "name" : "artifact_url", "type" : "string", "input-value" : "${artifact_url}", "default-value" : "" },
+			{ "name" : "env", "type" : "string", "default-value" : "prod" }
+		],
+		"manual" : false,
+		"template" : "<% print \"@@alternateTestTemplate@@\" ? \"@@alternateTestTemplate@@\" : \"test-prod-@@COMPONENT_TYPE@@\" %>",
+		"sub-jobs" : []
+	}
+}

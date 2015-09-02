@@ -1,0 +1,256 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Create Bastion Host AutoScaling Group",
+    "Parameters": {
+        "AMIid": {
+            "Type": "String",
+            "Description": "Please provide the Intuit Ami id for this region. The default is Intuit RHEL 6u5 AMI1 in us-west-1.",
+            "AllowedPattern": "ami-[a-zA-Z0-9]*"
+        },
+        "InstanceType": {
+            "Description": "EC2 instance sizes. m3.large or larger recommended for production",
+            "Type": "String",
+            "Default": "m3.medium",
+            "AllowedValues": [
+                "c3.large",
+                "c3.xlarge",
+                "m3.medium",
+                "m3.large",
+                "m3.xlarge"
+            ],
+            "ConstraintDescription": "Must be a valid EC2 instance type."
+        },
+        "OperatorEmail": {
+            "Description": "Email address to Notify upon scaling operations. (cannot be updated through stack updates)",
+            "Type": "String"
+        },
+        "KeyName": {
+            "Description": "The NAME of the EC2 Key Pair to allow SSH access to the instances. Name of key in AWS ec2 Key Pairs",
+            "Type": "String"
+        },
+        "VpcId": {
+            "Description": "The Vpc Id (ie vpc-xxxxx)",
+            "Type": "String",
+            "AllowedPattern": "vpc-[a-zA-Z0-9]*"
+        },
+        "BastionSubnet1": {
+            "Description": "Provide the Subnet ID of the bastion subnet in AZ1 (ie subnet-xxxxx).",
+            "Type": "String",
+            "AllowedPattern": "subnet-[a-zA-Z0-9]*"
+        },
+        "AvailabilityZone1": {
+            "Description": "The Availability Zone for the FIRST VPC Subnet (ie us-west-2a)",
+            "Type": "String",
+            "Default": "us-west-2a"
+        },
+        "BastionSubnet2": {
+            "Description": "Provide the Subnet ID of the bastion subnet in AZ1 (ie subnet-xxxxx).",
+            "Type": "String",
+            "AllowedPattern": "subnet-[a-zA-Z0-9]*"
+        },
+        "AvailabilityZone2": {
+            "Description": "The Availability Zone for the SECOND VPC Subnet (ie us-west-1b) For single AZ, use same AZ as AZ1.",
+            "Type": "String",
+            "Default": "us-west-2b"
+        },
+        "SAGSecurityGroup": {
+            "Description": "The NAME of the bastion security group created by PCC.",
+            "Type": "String"
+        }
+    },
+    "Resources": {
+        "BastionIAMPolicy": {
+            "Type": "AWS::IAM::Policy",
+            "Properties": {
+                "PolicyName": "BastionIAM",
+                "PolicyDocument": {
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "cloudformation:DescribeStackResource",
+                                "cloudwatch:PutMetricData"
+                            ],
+                            "Resource": [ "*" ]
+                        }
+                    ]
+                },
+                "Roles": [ { "Ref": "BastionIAMRole" } ]
+            }
+        },
+        "BastionIAMRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [ "ec2.amazonaws.com" ]
+                            },
+                            "Action": [ "sts:AssumeRole" ]
+                        }
+                    ]
+                },
+                "Path": "/"
+            }
+        },
+        "BastionIAMinstanceProfile": {
+            "Type": "AWS::IAM::InstanceProfile",
+            "Properties": {
+                "Path": "/",
+                "Roles": [ { "Ref": "BastionIAMRole" } ]
+            }
+        },
+        "BastionLaunchConfig": {
+            "Type": "AWS::AutoScaling::LaunchConfiguration",
+            "Properties": {
+                "AssociatePublicIpAddress": "true",
+                "ImageId": { "Ref": "AMIid" },
+                "IamInstanceProfile": { "Ref": "BastionIAMinstanceProfile" },
+                "SecurityGroups": [
+                    { "Ref": "SAGSecurityGroup" },
+                    { "Ref": "CorpSecurityGroup" }
+                ],
+                "InstanceType": { "Ref": "InstanceType" },
+                "KeyName": { "Ref": "KeyName" },
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "#!/bin/bash -ex \n",
+                                "umask 077;\n",
+                                "echo 'ALL: ALL' > /etc/hosts.allow\n",
+                                "sed -i 's/PEERDNS=no/PEERDNS=yes/' ",
+                                "/etc/sysconfig/network-scripts/ifcfg-eth0\n",
+                                "echo 'nameserver 208.67.222.222' > /etc/resolv.conf\n",
+                                "echo 'nameserver 208.67.220.220' >> /etc/resolv.conf\n",
+                                "export PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin\n",
+                                "fi",
+                                "\n"
+                            ]
+                        ]
+                    }
+                }
+            }
+        },
+        "BastionAutoScalingGroup": {
+            "UpdatePolicy": {
+                "AutoScalingRollingUpdate": {
+                    "MinInstancesInService": "1",
+                    "MaxBatchSize": "1",
+                    "PauseTime": "PT6M30S"
+                }
+            },
+            "Type": "AWS::AutoScaling::AutoScalingGroup",
+            "Properties": {
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "BastionASG",
+                        "PropagateAtLaunch": true
+                    },
+                    {
+                        "Key": "BastionVersion",
+                        "Value": "20141208",
+                        "PropagateAtLaunch": true
+                    }
+                ],
+                "VPCZoneIdentifier": [
+                    { "Ref": "BastionSubnet1" },
+                    { "Ref": "BastionSubnet2" }
+                ],
+                "AvailabilityZones": [
+                    { "Ref": "AvailabilityZone1" },
+                    { "Ref": "AvailabilityZone2" }
+                ],
+                "LaunchConfigurationName": {
+                    "Ref": "BastionLaunchConfig"
+                },
+                "MinSize": "1",
+                "MaxSize": "1",
+                "HealthCheckGracePeriod": "900",
+                "Cooldown": "300",
+                "HealthCheckType": "EC2",
+                "NotificationConfiguration": {
+                    "TopicARN": { "Ref": "NotificationTopic" },
+                    "NotificationTypes": [
+                        "autoscaling:EC2_INSTANCE_LAUNCH",
+                        "autoscaling:EC2_INSTANCE_LAUNCH_ERROR",
+                        "autoscaling:EC2_INSTANCE_TERMINATE",
+                        "autoscaling:EC2_INSTANCE_TERMINATE_ERROR"
+                    ]
+                }
+            }
+        },
+        "CorpSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "SSH Access from Intuit Corp",
+                "VpcId": { "Ref": "VpcId" },
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "ToPort": "22",
+                        "FromPort": "22",
+                        "CidrIp": "12.149.172.0/22"
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "ToPort": "22",
+                        "FromPort": "22",
+                        "CidrIp": "12.179.132.0/22"
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "ToPort": "22",
+                        "FromPort": "22",
+                        "CidrIp": "64.34.20.0/24"
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "ToPort": "22",
+                        "FromPort": "22",
+                        "CidrIp": "65.204.229.0/24"
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "ToPort": "22",
+                        "FromPort": "22",
+                        "CidrIp": "199.16.136.0/21"
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "ToPort": "22",
+                        "FromPort": "22",
+                        "CidrIp": "199.102.144.0/21"
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "ToPort": "22",
+                        "FromPort": "22",
+                        "CidrIp": "206.108.40.0/21"
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "ToPort": "22",
+                        "FromPort": "22",
+                        "CidrIp": "208.29.163.0/24"
+                    }
+                ]
+            }
+        },
+        "NotificationTopic": {
+            "Type": "AWS::SNS::Topic",
+            "Properties": {
+                "Subscription": [
+                    {
+                        "Endpoint": { "Ref": "OperatorEmail" },
+                        "Protocol": "email"
+                    }
+                ]
+            }
+        }
+    }
+}

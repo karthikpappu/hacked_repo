@@ -1,0 +1,187 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Create some prerequisites for RDS Database. RDS DB instance created via CLI.",
+    "Parameters": {
+        "VpcId": {
+            "Type": "String",
+            "Description": "VpcId of your existing Virtual Private Cloud (VPC)"
+        },
+        "Family": {
+            "Type": "String",
+            "Description": "The database family of this RDS parameter group."
+        },
+        "AppSubnetAZ1CIDR": {
+            "Type": "String",
+            "Description": "CIDR of PrivateAppSubnetAZ1"
+        },
+        "AppSubnetAZ2CIDR": {
+            "Type": "String",
+            "Description": "CIDR of PrivateAppSubnetAZ2"
+        },
+        "RDSIgressPort": {
+            "Type": "String",
+            "Description": "RDS Inbound Port"
+        },
+        "SubnetIds": {
+            "Type": "CommaDelimitedList",
+            "Description": "Subnet ID for to launch instance, this must be in given Availability Zone."
+        },
+        "AlarmActionWarning": {
+            "Description": "Alarm Action for Alerts",
+            "Type": "String"
+        },
+        "AlarmActionCritical": {
+            "Description": "Alarm Action for Alerts",
+            "Type": "String"
+        },
+        "FreeStorageSpaceWarningThreshold": {
+            "Default": "15000000000",
+            "Description": "Threshold for DB Free Space Storage Warning Alerts",
+            "Type": "String"
+        },
+        "FreeStorageSpaceCriticalThreshold": {
+            "Default": "10000000000",
+            "Description": "Threshold for DB Free Space Storage Critical Alerts",
+            "Type": "String"
+        }
+    },
+    "Resources": {
+        "DBSecGrp": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "DB Access Group",
+                "VpcId": { "Ref": "VpcId" }
+            }
+        },
+        "RDSIngressAZ1": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "IpProtocol": "tcp",
+                "FromPort": { "Ref": "RDSIgressPort" },
+                "ToPort": { "Ref": "RDSIgressPort" },
+                "CidrIp": { "Ref": "AppSubnetAZ1CIDR" },
+                "GroupId": { "Ref": "DBSecGrp" }
+            }
+        },
+        "RDSIngressAZ2": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "IpProtocol": "tcp",
+                "FromPort": { "Ref": "RDSIgressPort" },
+                "ToPort": { "Ref": "RDSIgressPort" },
+                "CidrIp": { "Ref": "AppSubnetAZ2CIDR" },
+                "GroupId": { "Ref": "DBSecGrp" }
+            }
+        },
+        "RDSviaSAG": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Medusa",
+                "VpcId": { "Ref": "VpcId" },
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": { "Ref": "RDSIgressPort" },
+                        "ToPort": { "Ref": "RDSIgressPort" },
+                        "CidrIp": "10.152.208.0/24"
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": { "Ref": "RDSIgressPort" },
+                        "ToPort": { "Ref": "RDSIgressPort" },
+                        "CidrIp": "10.181.70.0/23"
+                    }
+                ]
+            }
+        },
+        "CPUAlarmWarning": {
+            "Type": "AWS::CloudWatch::Alarm",
+            "Properties": {
+                "AlarmDescription": "RDS CPU > 70% for 5 minutes",
+                "MetricName": "CPUUtilization",
+                "Namespace": "AWS/RDS",
+                "Statistic": "Average",
+                "Period": "60",
+                "EvaluationPeriods": "5",
+                "Threshold": "70",
+                "AlarmActions": [ { "Ref": "AlarmActionWarning" } ],
+                "ComparisonOperator": "GreaterThanThreshold"
+            }
+        },
+        "CPUAlarmCritical": {
+            "Type": "AWS::CloudWatch::Alarm",
+            "Properties": {
+                "AlarmDescription": "CPU > 85% for 5 minutes",
+                "MetricName": "CPUUtilization",
+                "Namespace": "AWS/RDS",
+                "Statistic": "Average",
+                "Period": "60",
+                "EvaluationPeriods": "5",
+                "Threshold": "85",
+                "AlarmActions": [ { "Ref": "AlarmActionCritical" } ],
+                "ComparisonOperator": "GreaterThanThreshold"
+            }
+        },
+        "FreeStorageSpaceWarning": {
+            "Type": "AWS::CloudWatch::Alarm",
+            "Properties": {
+                "AlarmDescription": "FreeStorageSpace < 15 GB 10 minutes",
+                "MetricName": "FreeStorageSpace",
+                "Namespace": "AWS/RDS",
+                "Statistic": "Average",
+                "Period": "300",
+                "EvaluationPeriods": "2",
+                "Threshold": { "Ref": "FreeStorageSpaceWarningThreshold" },
+                "AlarmActions": [ { "Ref": "AlarmActionWarning" } ],
+                "ComparisonOperator": "LessThanThreshold"
+            }
+        },
+        "FreeStorageSpaceCritical": {
+            "Type": "AWS::CloudWatch::Alarm",
+            "Properties": {
+                "AlarmDescription": "FreeStorageSpace < 10 GB for 10 minutes",
+                "MetricName": "FreeStorageSpace",
+                "Namespace": "AWS/RDS",
+                "Statistic": "Average",
+                "Period": "300",
+                "EvaluationPeriods": "2",
+                "Threshold": { "Ref": "FreeStorageSpaceCriticalThreshold" },
+                "AlarmActions": [ { "Ref": "AlarmActionCritical" } ],
+                "ComparisonOperator": "LessThanThreshold"
+            }
+        },
+        "DBParameterGroup": {
+            "Type": "AWS::RDS::DBParameterGroup",
+            "Properties": {
+                "Description": "DB parameter group for RDS DB Instance",
+                "Family": { "Ref": "Family" },
+                "Parameters": {}
+            }
+        },
+        "DBSubnetGroup": {
+            "Type": "AWS::RDS::DBSubnetGroup",
+            "Properties": {
+                "DBSubnetGroupDescription": "Subnets available for the RDS DB Instance",
+                "SubnetIds": { "Ref": "SubnetIds" }
+            }
+        }
+    },
+    "Outputs": {
+        "DBParameterGroupName": {
+            "Description": "DB Parameter Group Name",
+            "Value": { "Ref": "DBParameterGroup" }
+        },
+        "DBSecGrp": {
+            "Description": "Security group for App to RDS",
+            "Value": { "Fn::GetAtt": [ "DBSecGrp", "GroupId" ] }
+        },
+        "RDSviaSAG": {
+            "Description": "Security group for SAG to RDS",
+            "Value": { "Fn::GetAtt": [ "RDSviaSAG", "GroupId" ] }
+        },
+        "DBSubnetGroup": {
+            "Description": "DB Subnet Group Name",
+            "Value": { "Ref": "DBSubnetGroup" }
+        }
+    }
+}

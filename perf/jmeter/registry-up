@@ -1,0 +1,36 @@
+#!/bin/bash
+
+export GUNICORN_OPTS='[--preload]'
+
+WORK_DIR=/var/tmp
+
+s3_bucket=df-docker-registry
+docker_repository=sbg-docker-registry
+tag=1.0.0
+registry_container=${docker_repository}:${tag}
+
+. /etc/bashrc
+
+docker inspect ${registry_container}  2>/dev/null
+if [ $? -ne 0 ]; then
+
+  cd ${WORK_DIR}
+  aws s3 cp s3://${s3_bucket}/bootstrap/${docker_repository}-${tag}.tar.gz ${WORK_DIR}
+
+  gunzip -f ${WORK_DIR}/${docker_repository}-${tag}.tar.gz
+  docker load -i ${WORK_DIR}/${docker_repository}-${tag}.tar
+fi 
+
+docker run \
+-d \
+--net=bridge \
+--name=${docker_repository} \
+-v /var/docker-registry:/var/docker-registry \
+-e SETTINGS_FLAVOR=prod \
+-e DOCKER_REGISTRY_CONFIG=/var/docker-registry/config.yml \
+-e STORAGE_PATH=/var/docker-registry \
+-e AWS_BUCKET=${s3_bucket} \
+-p 5000:5000 \
+${registry_container}
+docker ps
+docker logs ${docker_repository}

@@ -1,0 +1,31 @@
+export http_proxy=http://qy1prdproxy01.pprod.ie.intuit.net:80
+export https_proxy=http://qy1prdproxy01.pprod.ie.intuit.net:80
+export 'no_proxy=.intuit.net, .intuit.com,169.254.169.254'
+
+####################
+#App Build
+####################
+
+mvn clean deploy -s app/settings.xml -f app/pom.xml
+
+####################
+# Chef-repo Build
+####################
+
+cd platform/chef-repo
+if [ -d ./vendor ] ; then
+    rm -rf ./vendor
+fi
+
+rm -f ./chef-repo/Berksfile.lock
+berks install
+berks update
+berks vendor ./vendor/cookbooks
+mvn clean deploy -s settings.xml
+
+#############################
+# Cloudformation Validation
+#############################
+
+cd ../cloudformation
+for i in *.json ; do echo ${i}; aws --region us-west-2 cloudformation validate-template --template-body file://./${i}; done

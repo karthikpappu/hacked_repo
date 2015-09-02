@@ -1,0 +1,33 @@
+{
+  "name": "qa",
+  "description": "development environment",
+  "cookbook_versions": {
+  },
+  "json_class": "Chef::Environment",
+  "chef_type": "environment",
+  "default_attributes": {
+    "environment": "qa",
+    "yum_s3_iam": {
+      "repo_default": false,
+      "repositories": {
+        "epel-el6": {
+          "repo_description": "epel el6 YUM repo",
+          "repo_bucket": "http://rpm-epel-el6-us-west-2.s3.amazonaws.com/"
+        },
+        "3rdparty-el6": {
+          "repo_description": "3rd party YUM repo",
+          "repo_bucket": "http://rpm-3rdparty-el6-us-west-2.s3.amazonaws.com/"
+        }
+    }
+    },
+    "splunk": {
+      "forwarder": {
+        "symlink": {
+          "base": "/logs/qa"
+        }
+      }
+    }
+  },
+  "override_attributes": {
+  }
+}

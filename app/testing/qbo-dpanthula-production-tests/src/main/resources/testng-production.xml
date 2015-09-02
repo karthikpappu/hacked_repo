@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd" >
+<suite name="qbo-dpanthula-production-tests">
+    <test name="qbo-dpanthula production tests">
+        <packages>
+            <package name="com.intuit.sb.qbo.dpanthula.qbo-dpanthula.tests.production.*"/>
+        </packages>
+    </test>
+</suite>

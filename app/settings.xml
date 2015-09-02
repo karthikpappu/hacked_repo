@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings>
+	<servers>
+		<server>
+			<id>scm.dev.snap.repo</id>
+			<username>${env.SBG_NEXUS_SNAPSHOT_REPO_USERNAME}</username>
+			<password>${env.SBG_NEXUS_SNAPSHOT_REPO_PASSWORD}</password>
+		</server>
+		<server>
+			<id>scm.int.rel.repo</id>
+			<username>${server.rel.username}</username>
+			<password>${server.rel.password}</password>
+		</server>		
+	</servers>
+	<mirrors>
+        <mirror>
+        	
+        	<id>central-mirror</id>
+        	<url>http://nexus-proxy.preprod2-ibp.a.intuit.com/nexus/content/groups/sbg/</url>
+        	<mirrorOf>*</mirrorOf>
+    	</mirror>
+	</mirrors>
+	<profiles>
+		 <profile>
+		 <activation>
+        		 <activeByDefault>true</activeByDefault>
+		 </activation>
+        <repositories>
+            <repository>
+                <id>central-mirror</id>
+                <name>Nexus Public Repository</name>
+                <url>http://nexus-proxy.preprod2-ibp.a.intuit.com/nexus/content/groups/sbg/</url>
+                <releases>
+                    <enabled>true</enabled>
+                </releases>
+                <snapshots>
+                    <enabled>true</enabled>
+                    <updatePolicy>always</updatePolicy>
+                </snapshots>
+            </repository>
+        </repositories>
+    </profile>
+</profiles>
+
+</settings>

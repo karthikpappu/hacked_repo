@@ -1,0 +1,302 @@
+#!/bin/sh
+# Version: $Id$
+#SERVER
+
+usage() {
+cat << EOF
+usage: $0 options
+
+This script will install packages on pdevdasos100.corp.intuit.net
+e.x. $0 -n lastSuccessfulBuild -j CI-QBPurchasingCenter-package-trunk -e qcd_prod -a qbo-obile -p 9090
+     $0 -n 5 -j DY-DSI-package-rel -e prod
+OPTIONS:
+   -h       show this message
+   -n       deploy build number
+   -a       application name
+   -s       jenkins server (qbo or fms)
+   -o       org name
+   -p       port
+   -j       deploy job name
+   -e       environment
+   -3       S3 URL
+   -A       autostart off
+   -v       verbose
+EOF
+}
+
+function log () {
+   # will log to standard out and to syslog
+   # Send log message to standard  output
+   echo "`date +%F-%H:%M:%S`  $@"
+   # syslog on a rhel is /var/log/messages
+   logger -i -p local0.notice -t ${APP_NAME}.${host}.deploy.${0} -s \[$?\] "$@"
+}
+
+function info_log () {
+   log APP_NAME=${APP_NAME}
+   log JOB_NAME=${JOB_NAME}
+   log BUILD_NUM=${BUILD_NUM}
+   log ENV=${ENV}
+}
+
+function cleanup_dirs() {
+    if [ -n "$1" ]
+    then
+        for dir1 in `echo $1`; do
+           if [ -d ${dir1} ]
+           then
+                   rm -rf ${dir1}
+           fi
+        done
+    fi
+    if [ -d /app/${TOMCAT_DIR}.new ]
+    then
+        rm -rf /app/${TOMCAT_DIR}.new
+    fi
+    if [ -d /usr/local/stage/deploy/app/${TOMCAT_DIR}.new ]
+    then
+        rm -rf /usr/local/stage/deploy/app/${TOMCAT_DIR}.new
+    fi
+
+}
+
+function create_dirs () {
+    if [ -n "$1" ]
+    then
+        for dir1 in `echo $1`; do
+           if [ ! -d ${dir1} ]
+           then
+               mkdir -p ${dir1}
+           fi
+        done
+    fi
+    if [ ! -d ${INSTALL_ROOT_DIR} ];
+    then
+        mkdir -p ${INSTALL_ROOT_DIR}
+    fi
+
+}
+
+function chown_files () {
+    find ./ -name '*.sh' -o -name '*.pl' -o -name 'spcrun.*' -o -name '*.ctrl' -o -name '*.watchdog' -o -name '*.xml' -o -name '*.conf*' -o -name '*.properties*' -o -name '*sysconfig*' -type f  | xargs dos2unix -q
+    find ./*/bin -name '*.sh' -o -name '*.pl' -o -name 'spcrun.*' -o -name '*.ctrl' -o -name '*.watchdog' -o -name '*.xml' -o -name '*.conf*' -type f | xargs chmod 764
+    if [ -n $1 ]
+    then
+        chown -R $1:$1 . 
+    else
+        log "ERROR: No user set for chown"
+        exit 4
+    fi
+
+}
+
+function download_files () {
+   log start download
+
+   if [ -z $S3URL ]; then
+       if [ "${BUILD_NUM}" = lastSuccessfulBuild ]
+       then
+         BUILD_NUM=`wget -nv -O- "${ARTIFACT_PREFIX}/${JOB_NAME}/lastSuccessfulBuild/buildNumber"`
+       fi
+
+       if [[ "${BUILD_NUM}" =~ ^[0-9]+$ ]];
+       then
+         #BUILD_NUM is the expected integer
+         log depoying BUILD_NUM ${BUILD_NUM}
+       else
+         log "ERROR: BUILD_NUM [${BUILD_NUM}] is NOT a number"
+         exit 2
+       fi
+       ARTIFACT_URL="${ARTIFACT_PREFIX}/${JOB_NAME}/${BUILD_NUM}/${ARTIFACT_PATH}"
+   fi
+
+   if [ -n "$1" ]
+   then
+      for app_file in `echo ${1}`; do
+         log "download start ${app_file}"
+         if [ -n $S3URL ];
+         then
+             log "aws s3 cp ${S3URL}/${app_file} ./${app_file}"
+             aws s3 cp ${S3URL}/${app_file} ./${app_file}
+             if  [ $? -ne 0 ]; then
+                 log "Error: getting [s3] artifact: ${S3URL}/${app_file} FAILED"
+             fi
+         else
+             log "wget -nv ${ARTIFACT_URL}/${app_file} -O ${app_file}"
+             wget -nv ${ARTIFACT_URL}/${app_file} -O ${app_file}
+             if  [ $? -ne 0 ]; then
+                 log "Error: getting [wget] artifact: ${ARTIFACT_URL}/${app_file} FAILED"
+             fi
+         fi
+         log "download complete ${app_file}"
+      done
+   fi
+}
+
+function get_cmd_opts () {
+while getopts "b:n:a:p:j:e:3:s:v" OPTION
+do
+     case $OPTION in
+         h)
+             usage
+             exit 1
+             ;;
+         n) BUILD_NUM=$OPTARG ;;
+         a) APP_NAME=$OPTARG ;;
+         p) PORT=$OPTARG ;;
+         j) JOB_NAME=$OPTARG ;;
+         s) JENKINS_SERVER=$OPTARG ;;
+         e) ENV=$OPTARG ;;
+         3) S3URL=$OPTARG ;;
+         A) AUTOSTART=false;;
+         v) VERBOSE=1 ;;
+
+         ?) usage ;;
+     esac
+done
+}
+
+
+stage_files () {
+    if [ -d "${WORK_DIR}" ]
+    then
+      log pushd ${WORK_DIR}
+    else
+      log "ERROR: WORK_DIR ${WORK_DIR} does not exist"
+      exit 3
+    fi
+
+    unzip -o -d ${APP_DEST_DIR} fms-tomcat.zip
+    unzip -o -d ${APP_DEST_DIR} app-assembly.zip
+    unzip -o -d ${WORK_DIR}/conf app-conf.zip
+    if [ -r app-schema.zip]; then
+        unzip -o -d ${WORK_DIR}/conf app-schema.zip
+    fi
+}
+
+configure () {
+    #CONFIGURE DB SETTINGS, chown, dos2unix
+    pushd $WORK_DIR/conf
+
+    if [[ -n ${ENV} &&  -d ${ENV} ]] ; then
+      cp -r ${ENV}/* $APP_DEST_DIR
+    else
+      echo "${ENV} not in conf package"
+      exit 2
+    fi
+
+    #Configure DB settings, chown, dos2unix
+    pushd ${BASE_DIR}
+    export APP_DEST_DIR APP_DIR OPS_DIR
+    if [ -x ../${TOMCAT_DIR}.${ENV}.configure.sh ] ; then
+      ../${TOMCAT_DIR}.${ENV}.configure.sh
+    else
+      echo "Not configuring"
+    fi
+
+    pushd ${APP_DEST_DIR}
+    pwd
+    sed -i "s|CATALINA_HOME=.*$|CATALINA_HOME=${INSTALL_ROOT_DIR}|" ${APP_DEST_DIR}/tomcat/bin/tomcat_init_rhel.sh
+    sed -i "s|port=\"8080\"|port=\"${PORT}\"|" ${APP_DEST_DIR}/tomcat/conf/server.xml
+    chown_files app
+}
+
+deploy () {
+    if [ -d ${APP_DEST_DIR}/tomcat ]
+    then
+        mv ${APP_DEST_DIR}/tomcat/* ${APP_DEST_DIR}
+        rmdir ${APP_DEST_DIR}/tomcat
+    fi
+
+    mv ${APP_DEST_DIR} ${INSTALL_ROOT_DIR}.new
+    pushd /app
+    if [ -d ${INSTALL_ROOT_DIR}.older ]
+    then
+        rm -rf ${INSTALL_ROOT_DIR}.older
+    fi
+
+    if [ -d ${INSTALL_ROOT_DIR}.old ]
+    then
+        mv ${INSTALL_ROOT_DIR}{.old,.older}
+    fi
+
+    if [ -x /etc/init.d/${TOMCAT_DIR} ] ; then
+        /etc/init.d/${TOMCAT_DIR} stop
+    fi
+    if [ -d ${INSTALL_ROOT_DIR} ]
+    then
+        mv ${INSTALL_ROOT_DIR}{,.old}
+    fi
+    if [ -d ${INSTALL_ROOT_DIR}.new/logs ]
+    then
+        rm -rf ${INSTALL_ROOT_DIR}.new/logs
+    fi
+    if [ -d ${INSTALL_ROOT_DIR}.new ]
+    then
+        ln -nsf ${INSTALL_ROOT_DIR}/bin/sysconfig.tomcat /etc/sysconfig/${TOMCAT_DIR}
+        ln -nsf ${INSTALL_ROOT_DIR}/bin/tomcat_init_rhel.sh /etc/init.d/${TOMCAT_DIR}
+        mv ${INSTALL_ROOT_DIR}{.new,}
+	ln -nsf  ${APP_LOG_DEST_DIR} ${APP_LOG_DIR}
+        /sbin/chkconfig ${TOMCAT_DIR} on
+    fi
+
+
+    if [ ${AUTOSTART} != "false"] ; then
+      /etc/init.d/${TOMCAT_DIR} start
+      if [ $? != 0 ] ; then
+         echo "can't start tomcat"
+         exit -3
+      fi
+    fi
+}
+
+
+preinit () {
+    umask 0027
+    ARTIFACT_PATH="artifact/package/aggregate/target/dependency"
+    BUILD_NUM="lastSuccessfulBuild"
+        mkdir -p /usr/local/stage/deploy
+    pushd /usr/local/stage/deploy
+    BASE_DIR=`pwd`
+
+    host=`hostname -s`
+    log "start: $0"
+
+}
+
+init () {
+    ARTIFACT_PREFIX="http://admin.server/${JENKINS_SERVER}-build/job"
+    APP_DIR=${BASE_DIR}/app
+    TOMCAT_DIR=tomcat-${APP_NAME}
+    WORK_DIR=${BASE_DIR}/${TOMCAT_DIR}.work
+    APP_DEST_DIR=${APP_DIR}/${TOMCAT_DIR}
+    APP_DEST_BIN_DIR=${APP_DIR}/usr/local/bin
+    INSTALL_ROOT_DIR=/app/${TOMCAT_DIR}
+    APP_LOG_DIR=$INSTALL_ROOT_DIR/logs
+    APP_LOG_DEST_DIR=/var/log/${TOMCAT_DIR}
+    DIRS="${WORK_DIR} ${APP_DIR} ${APP_DEST_DIR} ${APP_DEST_BIN_DIR}"
+    CHEF_REPO_PREFIX=${S3BUCKET}/${JOB_NAME}-${BUILD_NUM}
+    APP_FILES="fms-tomcat.zip app-assembly.zip app-conf.zip app-schema.zip"
+}
+
+#DEFAULT ENV SETTINGS, that can be changed via cmd params
+APP_NAME=<%= node['base']['metadata']['deployment']['product'] %>
+ROLE=
+ENV=<%= node['base']['metadata']['deployment']['environment'] %>
+PORT=9090
+CLUSTER=
+JOB_NAME=CI-QBO-ErrorCode-master
+ARTIFACT_PREFIX=
+S3URL=<%= node['base']['metadata']['deployment']['artifact_url'] %>
+
+info_log
+preinit
+get_cmd_opts $@
+init
+cleanup_dirs "${DIRS}"
+create_dirs "${DIRS}"
+pushd ${WORK_DIR}
+download_files "${APP_FILES}"
+stage_files
+configure
+deploy

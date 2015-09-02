@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+
+LOCK='/var/run/slingshot_redeploy.lock'
+
+if [[ -f $LOCK ]]; then
+	echo "redeploying already in progress..."
+	EXIT_CODE=$?
+else
+	touch $LOCK
+	echo "redeploying role [<%= node['base']['metadata']['instance_role']['role'] %>]"
+
+	/usr/bin/cfn-init --verbose -s <%= node['base']['metadata']['stack']['name'] %> -r <%= node['base']['metadata']['stack']['resource_name'] %> -c bootstrap --region=<%= node['base']['metadata']['stack']['region'] %>
+	EXIT_CODE=$?
+
+	if [ "$EXIT_CODE" -eq 0 ];then
+		echo "redeployment completed"
+	else
+		echo "redeployment failed"
+	fi
+
+	/usr/bin/cfn-signal -e $EXIT_CODE '<%= node['base']['metadata']['stack']['wait_handle'] %>'
+
+	rm -f $LOCK
+fi
+
+exit $EXIT_CODE

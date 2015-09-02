@@ -1,0 +1,72 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Setup Route53 Web/App DNS Recordsets",
+    "Parameters": {
+        "ZoneName": {
+            "Type": "String",
+            "Description": "Route53 ZoneName"
+        },
+        "DNSName": {
+            "Type": "String",
+            "Description": "Name"
+        },
+        "WebLoadBalancerDNSName": {
+            "Type": "String",
+            "Description": "Fully Qualified Domain Name of Load Balancer"
+        },
+        "WebLoadBalancerName": {
+            "Type": "String",
+            "Description": "Name of the ELB"
+        },
+        "TTL": {
+            "Type": "String",
+            "Description": "TTL for the CNAME",
+            "Default": "60"
+        },
+        "RecordType": {
+            "Type": "String",
+            "Description": "DNS Record Type",
+            "Default": "CNAME"
+        }
+    },
+    "Conditions": {
+        "CreateDNSResourceRecords": { "Fn::Equals": [ { "Ref": "RecordType" }, "CNAME" ] }
+    },
+    "Resources": {
+        "DNSRecord": {
+            "Type": "AWS::Route53::RecordSet",
+            "Properties": {
+                "HostedZoneName": { "Fn::Join": [ "", [ { "Ref": "ZoneName" }, "." ] ] },
+                "Comment": "DNS name",
+                "Name": { "Fn::Join": [ "", [ { "Ref": "DNSName" }, ".", { "Ref": "ZoneName" }, "." ] ] },
+                "Type": { "Ref": "RecordType" },
+                "TTL": { "Ref": "TTL" },
+                "ResourceRecords": {
+                    "Fn::If": [
+                        "CreateDNSResourceRecords",
+                        [ { "Fn::Join": [ "", [ { "Ref": "WebLoadBalancerDNSName" }, "." ] ] } ],
+                        [ { "Ref": "WebLoadBalancerDNSName" } ]
+                    ]
+                }
+            }
+        }
+    },
+    "Outputs": {
+        "URL": {
+            "Description": "Full URL",
+            "Value": { "Fn::Join": [ "", [ "https://", { "Ref": "DNSRecord" } ] ] }
+        },
+        "WebLoadBalancerDNSName": {
+            "Description": "Fully Qualified Domain Name of Load Balancer",
+            "Value": { "Ref": "WebLoadBalancerDNSName" }
+        },
+        "WebLoadBalancerName": {
+            "Description": "Name of the ELB",
+            "Value": { "Ref": "WebLoadBalancerName" }
+        },
+        "DNSRecord": {
+            "Description": "DNS Name",
+            "Value": { "Ref": "DNSRecord" }
+        }
+    }
+}

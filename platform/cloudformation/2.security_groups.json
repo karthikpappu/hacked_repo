@@ -1,0 +1,251 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Parameters": {
+        "VpcId": {
+            "Type": "String",
+            "Description": "Your existing VPC"
+        },
+        "SAGSecGrp": {
+            "Type": "String",
+            "Description": "SAGSecGrp"
+        },
+        "BastionSecGrp": {
+            "Type": "String",
+            "Description": "BastionSecGrp"
+        },
+        "CacheSecGrp": {
+            "Type": "String",
+            "Description": "CacheSecGrp",
+            "Default": ""
+        },
+        "ElbCidrIp": {
+            "Type": "String",
+            "Description": "IP Addresses allowed to connect to ELB",
+            "Default": "0.0.0.0/0"
+        }
+    },
+    "Conditions": {
+        "CreateCacheIngress": {
+            "Fn::Not": [ { "Fn::Equals": [ { "Ref": "CacheSecGrp" }, "" ] } ]
+        }
+    },
+    "Resources": {
+        "ELBSecGrp": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "ELB Access Group",
+                "VpcId": { "Ref": "VpcId" }
+            }
+        },
+        "WebSecGrp": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "App Access Group",
+                "VpcId": { "Ref": "VpcId" }
+            }
+        },
+        "ILBSecGrp": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "ILB Access Group",
+                "VpcId": { "Ref": "VpcId" }
+            }
+        },
+        "AppSecGrp": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "App Access Group",
+                "VpcId": { "Ref": "VpcId" }
+            }
+        },
+        "MedusaSecGrp": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Medusa Access Group",
+                "VpcId": { "Ref": "VpcId" }
+            }
+        },
+        "ELBIngressRule": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "IpProtocol": "tcp",
+                "FromPort": "443",
+                "ToPort": "443",
+                "CidrIp": { "Ref": "ElbCidrIp" },
+                "GroupId": { "Fn::GetAtt": [ "ELBSecGrp", "GroupId" ] }
+            }
+        },
+        "WebIngressRule": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "IpProtocol": "tcp",
+                "FromPort": "443",
+                "ToPort": "443",
+                "SourceSecurityGroupId": { "Fn::GetAtt": [ "ELBSecGrp", "GroupId" ] },
+                "GroupId": { "Fn::GetAtt": [ "WebSecGrp", "GroupId" ] }
+            }
+        },
+        "ILBIngressRule": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "IpProtocol": "tcp",
+                "FromPort": "8443",
+                "ToPort": "8443",
+                "SourceSecurityGroupId": { "Fn::GetAtt": [ "WebSecGrp", "GroupId" ] },
+                "GroupId": { "Fn::GetAtt": [ "ILBSecGrp", "GroupId" ] }
+            }
+        },
+        "AppIngressRule": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "IpProtocol": "tcp",
+                "FromPort": "8443",
+                "ToPort": "8443",
+                "SourceSecurityGroupId": { "Fn::GetAtt": [ "ILBSecGrp", "GroupId" ] },
+                "GroupId": { "Fn::GetAtt": [ "AppSecGrp", "GroupId" ] }
+            }
+        },
+        "CacheIngressRule": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Condition": "CreateCacheIngress",
+            "Properties": {
+                "IpProtocol": "tcp",
+                "FromPort": "11211",
+                "ToPort": "11211",
+                "SourceSecurityGroupId": { "Fn::GetAtt": [ "AppSecGrp", "GroupId" ] },
+                "GroupId": { "Ref": "CacheSecGrp" }
+            }
+        },
+        "SAG2WebIngressRule": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "IpProtocol": "tcp",
+                "FromPort": "22",
+                "ToPort": "22",
+                "SourceSecurityGroupId": { "Ref": "SAGSecGrp" },
+                "GroupId": { "Fn::GetAtt": [ "WebSecGrp", "GroupId" ] }
+            }
+        },
+        "SAG2AppIngressRule": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "IpProtocol": "tcp",
+                "FromPort": "22",
+                "ToPort": "22",
+                "SourceSecurityGroupId": { "Ref": "SAGSecGrp" },
+                "GroupId": { "Fn::GetAtt": [ "AppSecGrp", "GroupId" ] }
+            }
+        },
+        "Bastion2WebIngressRule": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "IpProtocol": "tcp",
+                "FromPort": "22",
+                "ToPort": "22",
+                "SourceSecurityGroupId": { "Ref": "BastionSecGrp" },
+                "GroupId": { "Fn::GetAtt": [ "WebSecGrp", "GroupId" ] }
+            }
+        },
+        "Bastion2AppIngressRule": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "IpProtocol": "tcp",
+                "FromPort": "22",
+                "ToPort": "22",
+                "SourceSecurityGroupId": { "Ref": "BastionSecGrp" },
+                "GroupId": { "Fn::GetAtt": [ "AppSecGrp", "GroupId" ] }
+            }
+        },
+        "MedusaIngressRule": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Medusa",
+                "VpcId": { "Ref": "VpcId" },
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "-1",
+                        "FromPort": "",
+                        "ToPort": "",
+                        "CidrIp": "10.152.247.65/32"
+                    },
+                    {
+                        "IpProtocol": "-1",
+                        "FromPort": "",
+                        "ToPort": "",
+                        "CidrIp": "10.152.247.66/32"
+                    },
+                    {
+                        "IpProtocol": "-1",
+                        "FromPort": "",
+                        "ToPort": "",
+                        "CidrIp": "10.152.247.58/32"
+                    },
+                    {
+                        "IpProtocol": "-1",
+                        "FromPort": "",
+                        "ToPort": "",
+                        "CidrIp": "10.152.247.68/32"
+                    },
+                    {
+                        "IpProtocol": "-1",
+                        "FromPort": "",
+                        "ToPort": "",
+                        "CidrIp": "10.152.247.69/32"
+                    },
+                    {
+                        "IpProtocol": "-1",
+                        "FromPort": "",
+                        "ToPort": "",
+                        "CidrIp": "10.152.247.67/32"
+                    },
+                    {
+                        "IpProtocol": "-1",
+                        "FromPort": "",
+                        "ToPort": "",
+                        "CidrIp": "10.152.247.59/32"
+                    },
+                    {
+                        "IpProtocol": "-1",
+                        "FromPort": "",
+                        "ToPort": "",
+                        "CidrIp": "10.153.12.20/30"
+                    }
+                ]
+            }
+        }
+    },
+    "Outputs": {
+        "ELBSecGrp": {
+            "Description": "ELB Security Group",
+            "Value": { "Ref": "ELBSecGrp" }
+        },
+        "WebSecGrp": {
+            "Description": "App Security Group",
+            "Value": { "Ref": "WebSecGrp" }
+        },
+        "ILBSecGrp": {
+            "Description": "ILB Security Group",
+            "Value": { "Ref": "ILBSecGrp" }
+        },
+        "AppSecGrp": {
+            "Description": "App Security Group",
+            "Value": { "Ref": "AppSecGrp" }
+        },
+        "CacheSecGrp": {
+            "Description": "Cache Security Group",
+            "Value": { "Ref": "CacheSecGrp" }
+        },
+        "SAGSecGrp": {
+            "Description": "SAG Security Group",
+            "Value": { "Ref": "SAGSecGrp" }
+        },
+        "BastionSecGrp": {
+            "Description": "Bastion Security Group",
+            "Value": { "Ref": "BastionSecGrp" }
+        },
+        "MedusaSecGrp": {
+            "Description": "Medusa Security Group",
+            "Value": { "Ref": "MedusaSecGrp" }
+        }
+    }
+}

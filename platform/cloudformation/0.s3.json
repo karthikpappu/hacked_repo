@@ -1,0 +1,59 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Parameters": {
+        "Profile": {
+            "Description": "Profile name",
+            "Type": "String"
+        },
+        "AccountId": {
+            "Description": "AWS account ID of the production account",
+            "Type": "String",
+            "Default": ""
+        }
+    },
+    "Conditions": {
+        "CreateBucketPolicy": {
+            "Fn::Not": [
+                { "Fn::Equals": [ { "Ref": "AccountId" }, "" ] }
+            ]
+        }
+    },
+    "Resources": {
+        "PrivateBucket": {
+            "Type": "AWS::S3::Bucket",
+            "Properties": {
+                "BucketName": {
+                    "Fn::Join": [ "-", [ { "Ref": "Profile" }, { "Ref": "AWS::Region" } ] ]
+                }
+            }
+        },
+        "PrivateBucketPolicy": {
+            "Type": "AWS::S3::BucketPolicy",
+            "Condition": "CreateBucketPolicy",
+            "Properties": {
+                "Bucket": { "Ref": "PrivateBucket" },
+                "PolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": [
+                                "s3:GetBucketLocation",
+                                "s3:GetObject",
+                                "s3:ListBucket"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": [
+                                { "Fn::Join": [ "", [ "arn:aws:s3:::", { "Ref": "PrivateBucket" }, "/*" ] ] },
+                                { "Fn::Join": [ "", [ "arn:aws:s3:::", { "Ref": "PrivateBucket" } ] ] }
+                            ],
+                            "Principal": {
+                                "AWS": {
+                                    "Fn::Join": [ "", [ "arn:aws:iam::", { "Ref": "AccountId" }, ":user/deploy" ] ]
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,46 @@
+{
+  "name":"tomcat8",
+  "default_attributes":{
+
+  },
+  "json_class":"Chef::Role",
+  "env_run_lists":{
+
+  },
+  "run_list":[
+    "role[base]",
+    "recipe[java]",
+    "recipe[application::tomcat]"
+  ],
+  "description":"Tomcat role",
+  "chef_type":"role",
+  "override_attributes":{
+    "java":{
+      "install_flavor":"oracle_rpm",
+      "jdk_version":"8",
+      "oracle_rpm":{
+        "package_name":"jdk1.8.0_31",
+        "package_version":"1.8.0_31-fcs",
+        "type":"jdk"
+      },
+      "oracle":{
+        "accept_oracle_download_terms": true,
+        "jce":{
+          "7":{
+            "url":"https://s3-us-west-2.amazonaws.com/bin-3rdparty-us-west-2/UnlimitedJCEPolicyJDK7.zip",
+            "checksum":"7a8d790e7bd9c2f82a83baddfae765797a4a56ea603c9150c87b7cdb7800194d"
+          },
+          "8":{
+            "url":"https://s3-us-west-2.amazonaws.com/bin-3rdparty-us-west-2/jce_policy-8.zip",
+            "checksum":"f3020a3922efd6626c2fff45695d527f34a8020e938a49292561f18ad1320b59"
+          },
+          "enabled": true,
+          "enable_symlink": false
+        }
+      }
+    },
+      "tomcat":{
+      "tomcat_flavor":"tomcat8"
+    }
+  }
+}

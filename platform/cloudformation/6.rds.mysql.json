@@ -1,0 +1,208 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Create an RDS MySQL Database in an existing VPC",
+  "Parameters": {
+
+    "VpcId": {
+      "Type": "String",
+      "Description": "VpcId of your existing Virtual Private Cloud (VPC)"
+    },
+    "SubnetIds": {
+      "Type": "CommaDelimitedList",
+      "Description": "Subnet ID for to launch instance, this must be in given Availability Zone."
+    },
+    "DBName": {
+      "Description": "The database name",
+      "Type": "String",
+      "MinLength": "1",
+      "MaxLength": "64",
+      "AllowedPattern": "[a-zA-Z][a-zA-Z0-9]*",
+      "ConstraintDescription": "must begin with a letter and contain only alphanumeric characters."
+    },
+    "DBUsername": {
+      "Default": "dbadmin",
+      "NoEcho": "true",
+      "Description": "The database admin account username",
+      "Type": "String",
+      "MinLength": "1",
+      "MaxLength": "16",
+      "AllowedPattern": "[a-zA-Z][a-zA-Z0-9]*",
+      "ConstraintDescription": "must begin with a letter and contain only alphanumeric characters."
+    },
+
+    "DBPassword": {
+      "Default": "admin",
+      "NoEcho": "true",
+      "Description": "The database admin account password",
+      "Type": "String",
+      "MinLength": "1",
+      "MaxLength": "41",
+      "AllowedPattern": "[a-zA-Z0-9]*",
+      "ConstraintDescription": "must contain only alphanumeric characters."
+    },
+
+    "DBInstanceClass": {
+      "Default": "db.m1.small",
+      "Description": "Database instance class",
+      "Type": "String",
+      "AllowedValues": [ "db.m1.small", "db.m1.medium", "db.m1.large", "db.m1.xlarge", "db.m2.xlarge", "db.m2.2xlarge", "db.m2.4xlarge" ],
+      "ConstraintDescription": "must select a valid database instance type."
+    },
+
+    "DBAllocatedStorage": {
+      "Default": "10",
+      "Description": "The size of the database (GB)",
+      "Type": "Number",
+      "MinValue": "10",
+      "MaxValue": "1024",
+      "ConstraintDescription": "must be between 5 and 1024 GB."
+    },
+    "AlarmActionWarning": {
+      "Description": "Alarm Action for Alerts",
+      "Type": "String"
+    },
+    "AlarmActionCritical": {
+      "Description": "Alarm Action for Alerts",
+      "Type": "String"
+    },
+    "FreeStorageSpaceWarningThreshold": {
+      "Default": "15000000000",
+      "Description": "Threshold for DB Free Space Storage Warning Alerts",
+      "Type": "String"
+    },
+    "FreeStorageSpaceCriticalThreshold": {
+      "Default": "10000000000",
+      "Description": "Threshold for DB Free Space Storage Critical Alerts",
+      "Type": "String"
+    }
+
+  },
+
+  "Resources": {
+    "DBSecGrp": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "DB Access Group",
+        "VpcId": { "Ref": "VpcId" }
+      }
+    },
+    "CPUAlarmWarning": {
+     "Type": "AWS::CloudWatch::Alarm",
+     "Properties": {
+        "AlarmDescription": "RDS CPU > 70% for 5 minutes",
+        "MetricName": "CPUUtilization",
+        "Namespace": "AWS/RDS",
+        "Statistic": "Average",
+        "Period": "60",
+        "EvaluationPeriods": "5",
+        "Threshold": "70",
+        "AlarmActions": [ { "Ref": "AlarmActionWarning" } ],
+        "ComparisonOperator": "GreaterThanThreshold"
+      }
+    },
+    "CPUAlarmCritical": {
+     "Type": "AWS::CloudWatch::Alarm",
+     "Properties": {
+        "AlarmDescription": "CPU > 85% for 5 minutes",
+        "MetricName": "CPUUtilization",
+        "Namespace": "AWS/RDS",
+        "Statistic": "Average",
+        "Period": "60",
+        "EvaluationPeriods": "5",
+        "Threshold": "85",
+        "AlarmActions": [ { "Ref": "AlarmActionCritical" } ],
+        "ComparisonOperator": "GreaterThanThreshold"
+      }
+    },
+    "FreeStorageSpaceWarning": {
+     "Type": "AWS::CloudWatch::Alarm",
+     "Properties": {
+        "AlarmDescription": "FreeStorageSpace < 15 GB 10 minutes",
+        "MetricName": "FreeStorageSpace",
+        "Namespace": "AWS/RDS",
+        "Statistic": "Average",
+        "Period": "300",
+        "EvaluationPeriods": "2",
+        "Threshold": { "Ref": "FreeStorageSpaceWarningThreshold" },
+        "AlarmActions": [ { "Ref": "AlarmActionWarning" } ],
+        "ComparisonOperator": "LessThanThreshold"
+      }
+    },
+    "FreeStorageSpaceCritical": {
+     "Type": "AWS::CloudWatch::Alarm",
+     "Properties": {
+        "AlarmDescription": "FreeStorageSpace < 10 GB for 10 minutes",
+        "MetricName": "FreeStorageSpace",
+        "Namespace": "AWS/RDS",
+        "Statistic": "Average",
+        "Period": "300",
+        "EvaluationPeriods": "2",
+        "Threshold": { "Ref": "FreeStorageSpaceCriticalThreshold" },
+        "AlarmActions": [ { "Ref": "AlarmActionCritical" } ],
+        "ComparisonOperator": "LessThanThreshold"
+      }
+    },
+    "DBParameterGroup": {
+      "Type": "AWS::RDS::DBParameterGroup",
+      "Properties" : {
+        "Description" : "DB parameter group for RDS DB Instance",
+        "Family" : "MySQL5.6",
+        "Parameters" : {
+        }
+      }
+    },
+    "DBSubnetGroup": {
+      "Type": "AWS::RDS::DBSubnetGroup",
+      "Properties": {
+        "DBSubnetGroupDescription": "Subnets available for the RDS DB Instance",
+        "SubnetIds": { "Ref": "SubnetIds" }
+      }
+    },
+
+    "DB": {
+      "Type": "AWS::RDS::DBInstance",
+      "Properties": {
+        "DBName": { "Ref": "DBName" },
+        "AllocatedStorage": { "Ref": "DBAllocatedStorage" },
+        "DBInstanceClass": { "Ref": "DBInstanceClass" },
+        "Engine": "MySQL",
+        "EngineVersion": "5.6",
+        "MasterUsername": { "Ref": "DBUsername" } ,
+        "MasterUserPassword": { "Ref": "DBPassword" },
+        "DBParameterGroupName" : { "Ref": "DBParameterGroup" },
+        "DBSubnetGroupName": { "Ref": "DBSubnetGroup" },
+        "VPCSecurityGroups": [ { "Ref": "DBSecGrp" } ],
+        "MultiAZ" : true
+      }
+    }
+  },
+
+
+  "Outputs": {
+   "DBParameterGroupName": {
+      "Description": "DB Parameter Group Name",
+      "Value": { "Ref": "DBParameterGroup" }
+    },
+    "DBAddress": {
+      "Description": "Address of the database",
+      "Value": { "Fn::GetAtt": [ "DB", "Endpoint.Address" ]}
+    },
+    "DBPort": {
+      "Description": "Port of the database",
+      "Value": { "Fn::GetAtt": [ "DB", "Endpoint.Port" ]}
+    },
+    "DBSecGrp": {
+      "Description": "Security group for DB",
+      "Value": { "Fn::GetAtt": [ "DBSecGrp", "GroupId" ]}
+    },
+    "RDSConnectionString": {
+      "Description": "JDBC connection string for database",
+      "Value": { "Fn::Join": [ "", [ "jdbc:mysql://",
+                                      { "Fn::GetAtt": [ "DB", "Endpoint.Address" ] },
+                                      ":",
+                                      { "Fn::GetAtt": [ "DB", "Endpoint.Port" ] },
+                                      "/",
+                                      { "Ref": "DBName" }]]}
+    }
+  }
+}

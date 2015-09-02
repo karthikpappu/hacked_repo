@@ -1,0 +1,111 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+
+  "Description": "App ILB with HTTP/HTTPS termination support.",
+
+  "Parameters": {
+    "VpcId": {
+      "Type": "String",
+      "Description": "ID of your existing VPC"
+    },
+    "SubnetIds": {
+      "Type": "CommaDelimitedList",
+      "Description": "Subnet Ids within the VPC"
+    },
+    "AppIlbAccessSecurityGroup": {
+      "Type": "String",
+      "Description": "Security group ID for the load balanced internal traffic"
+    },
+    "AppAccessSecurityGroup": {
+      "Type": "String",
+      "Description": "Security group ID to grant ILB access to App tier."
+    },
+    "HttpInstancePort": {
+      "Type": "String",
+      "Default": "8080",
+      "Description": "HTTP Port to forward traffic to"
+    },
+    "HttpsInstancePort": {
+      "Type": "String",
+      "Default": "8443",
+      "Description": "HTTPS Port to forward traffic to"
+    },
+    "HealthCheckProtocol": {
+      "Type": "String",
+      "Default": "TCP",
+      "Description": "Protocol to use for health checks"
+    },
+    "HealthCheckURL": {
+      "Type": "String",
+      "Default": "/index.html",
+      "Description": "relative URL to ping for health checks"
+    },
+    "HealthCheckResponseTimeout": {
+      "Type": "String",
+      "Default": "5",
+      "Description": "Seconds before timing out health checks"
+    },
+    "HealthCheckInterval": {
+      "Type": "String",
+      "Default": "10",
+      "Description": "Interval, in seconds, to execute health checks"
+    },
+    "HealthCheckHealthyThreshold": {
+      "Type": "String",
+      "Default": "3",
+      "Description": "Number of consecutive succesful health checks before marking as healthy"
+    },
+    "HealthCheckUnhealthyThreshold": {
+      "Type": "String",
+      "Default": "5",
+      "Description": "Number of consecutive unsuccesful health checks before marking as unhealthy"
+    }
+  },
+
+  "Resources": {
+    "ILB": {
+      "Type": "AWS::ElasticLoadBalancing::LoadBalancer",
+      "Properties": {
+        "SecurityGroups": [ { "Ref": "AppAccessSecurityGroup" },
+                            { "Ref":"AppIlbAccessSecurityGroup"} ],
+        "Scheme": "internal",
+        "Subnets": { "Ref": "SubnetIds" },
+        "Listeners": [
+          {
+            "LoadBalancerPort": { "Ref": "HttpInstancePort" },
+            "InstancePort": { "Ref": "HttpInstancePort" },
+            "Protocol": "HTTP"
+          },
+          {
+            "LoadBalancerPort": { "Ref": "HttpsInstancePort" },
+            "InstancePort": { "Ref": "HttpsInstancePort" },
+            "Protocol": "TCP"
+          }
+        ],
+        "HealthCheck": {
+          "Target": { "Fn::Join": [ "", [ { "Ref": "HealthCheckProtocol" }, ":",
+                                          { "Ref": "HttpsInstancePort" } ] ] },
+          "HealthyThreshold": { "Ref": "HealthCheckHealthyThreshold" },
+          "UnhealthyThreshold": { "Ref": "HealthCheckUnhealthyThreshold" },
+          "Interval": { "Ref": "HealthCheckInterval" },
+          "Timeout": { "Ref": "HealthCheckResponseTimeout" }
+        },
+        "AccessLoggingPolicy": {
+          "S3BucketName": { "Fn::Join" : [ "", [ "robot-h-t003-", { "Ref" : "AWS::Region" } ] ] },
+          "Enabled": "true",
+          "EmitInterval" : "5"
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "AppLoadBalancerName": {
+      "Description": "Name of the Application ILB",
+      "Value": { "Ref": "ILB" }
+    },
+    "AppLoadBalancerDNSName": {
+      "Description": "DNS name of Application ILB",
+      "Value": { "Fn::GetAtt": [ "ILB", "DNSName" ]}
+    }
+  }
+}

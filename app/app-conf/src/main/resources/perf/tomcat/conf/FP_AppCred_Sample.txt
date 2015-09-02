@@ -1,0 +1,13 @@
+# RDS password
+data.jdbc.properties.password=
+
+# IUS app secret
+# check with PD to get a PROD app secret
+ius.gateway.app.secret.key=
+
+# SALT to be used
+# for other env please use this one
+salt=
+
+# SALT version to be used 
+salt_version=

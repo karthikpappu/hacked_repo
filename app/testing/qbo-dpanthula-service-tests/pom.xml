@@ -1,0 +1,22 @@
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>com.intuit.sb.qbo.dpanthula.qbo-dpanthula.tests</groupId>
+        <artifactId>qbo-dpanthula-test-parent-pom</artifactId>
+        <version>1.1.0-dev-SNAPSHOT</version>
+        <relativePath>../qbo-dpanthula-test-parent-pom</relativePath>
+    </parent>
+
+    <modelVersion>4.0.0</modelVersion>
+    <artifactId>qbo-dpanthula-service-tests</artifactId>
+    <name>qbo-dpanthula-service-tests</name>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.intuit.sb.qbo.dpanthula.qbo-dpanthula.tests</groupId>
+            <artifactId>qbo-dpanthula-test-library</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+
+</project>

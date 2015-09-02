@@ -1,0 +1,17 @@
+<assembly>
+    <formats>
+        <format>zip</format>
+    </formats>
+    <includeBaseDirectory>false</includeBaseDirectory>
+    <dependencySets>
+        <dependencySet>
+            <outputFileNameMapping>${artifact.artifactId}.${artifact.extension}</outputFileNameMapping>
+            <useProjectArtifact>false</useProjectArtifact>
+            <useTransitiveDependencies>false</useTransitiveDependencies>
+            <outputDirectory>tomcat/webapps</outputDirectory>
+            <includes>
+                <include>com.intuit.sb.qbo.dpanthula:webapp:war</include>
+            </includes>
+        </dependencySet>
+    </dependencySets>
+</assembly>

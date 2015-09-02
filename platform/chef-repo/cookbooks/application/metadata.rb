@@ -1,0 +1,13 @@
+name             'application'
+maintainer       'Intuit'
+maintainer_email 'Intuit'
+license          'All rights reserved'
+description      'Installs/Configures application'
+long_description 'Installs/Configures application'
+version          '0.1.0'
+
+depends 'nginx'
+depends 'secrets'
+depends 'dnsmasq'
+depends 'cfn-hup'
+depends 'memcached'

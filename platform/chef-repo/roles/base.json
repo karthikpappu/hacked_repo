@@ -1,0 +1,30 @@
+{
+  "name": "base",
+  "default_attributes": {
+  },
+  "json_class": "Chef::Role",
+  "env_run_lists": {
+    },
+  "run_list": [ 
+    "recipe[yum_s3_iam]",
+    "recipe[base]",
+    "recipe[base::app_volume]",
+    "recipe[application]",
+    "recipe[application::secrets]",
+    "recipe[aws_cloudwatch]",
+    "role[splunk]",
+    "recipe[newrelic]",
+    "recipe[application::redeploy]"
+  ],
+  "description": "Base role",
+  "chef_type": "role",
+  "override_attributes": {
+    "secrets": {
+      "cli_source": "rpm-3rdparty-el6-us-west-2",
+      "cli_package": "secrets-cli-2.3.1.1.rpm"
+    },
+    "aws_cloudwatch": {
+      "disks": [ "/", "/app" ]
+    }
+  }
+}

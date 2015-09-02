@@ -1,0 +1,147 @@
+{
+	"name" : "simple-java-workflow",
+	
+	"desc" : "standard workflow for a git flow master branch for an SBG Java web applications as defined at https://wiki.intuit.com/download/attachments/268088046/sbg_simple_java_pipeline.png?version=1&modificationDate=1416857400000&api=v2",
+
+	"steps" : {
+
+		"cd-pipeline" : {
+		
+			"desc" : "this is the git flow master branch Continuous Delivery (CD) pipeline of jobs for a simple java web app or service",
+
+			"generateView" : false,
+
+			"start-phase" : "commit",
+
+			"phases" : {
+			
+				"commit" : {
+						"desc" : "this phase builds the java app and run unit tests deploy to nexus or save the artifact with the jenkins build",
+						"jobs" : ["build-commit"],
+						"next-phase" : "deploy_ci"
+				},
+
+				"deploy_ci" : {
+						"desc" : "this phase deploys the artifact to a ci test env and launches concurrent analysis and localization tasks",
+						"jobs" : ["deploy-ci"],
+						"next-phase" : "test_ci"
+				},
+
+				"test_ci" : {
+						"jobs" : ["test-ci"],
+						"next-phase" : "deploy_qa"
+				},
+
+				"deploy_qa" : {
+						"jobs" : ["deploy-qa"],
+						"next-phase" : "test_qa"
+				},
+
+				"test_qa" : {
+						"jobs" : ["test-qa"],
+						"next-phase" : "deploy_e2e_perf"
+				},
+
+				"deploy_e2e_perf" : {
+						"jobs" : ["deploy-e2e","deploy-perf"],
+						"next-phase" : "test_e2e_perf",
+						"next-phase-job-map" : {
+														"deploy-e2e" : ["test-e2e"],
+														"deploy-perf" : ["test-perf"]
+						}
+				},
+
+				"test_e2e_perf" : {
+						"jobs" : ["test-e2e","test-perf"],
+						"next-phase" : "store_prod",
+						"next-phase-job-map" : {
+														"test-e2e" : ["store-prod"]
+						}
+				},
+
+				"store_prod" : {
+						"jobs" : ["store-prod"],
+						"next-phase" : "deploy_stage"
+				},
+
+				"deploy_stage" : {
+						"jobs" : ["deploy-stage"],
+						"next-phase" : "test_stage"
+				},
+
+				"test_stage" : {
+						"jobs" : ["test-stage"],
+						"next-phase" : "deploy_prod"
+				},
+
+				"deploy_prod" : {
+						"jobs" : ["deploy-prod"],
+						"next-phase" : "test_prod"
+				},
+
+				"test_prod" : {
+						"jobs" : ["test-prod"],
+						"next-phase" : ""
+				}
+			}
+		},
+
+
+
+		"analysis-pipeline" : {
+
+			"desc" : "this is the analysis pipeline for jobs that perform code coverage, security, and globalization scans for a simple java web app or service",
+
+			"generateView" : false,
+
+			"start-phase" : "analyze",
+			
+			"phases" : {
+			
+				"analyze" : {
+						"desc" : "this phase launches concurrent analysis and localization tasks",
+						"jobs" : ["analyze-static-code","analyze-security","analyze-globalization"],
+						"next-phase" : ""
+				}
+			}
+		},
+
+		"initialization-pipeline" : {
+
+			"desc" : "this is the initialization pipeline for a new project -- it should only be executed one time to a initialize a new project",
+
+			"generateView" : false,
+
+			"start-phase" : "initialize",
+			
+			"phases" : {
+
+				"initialize" : {
+						"desc" : "this phase sets up the initial AWS settings for a project",
+						"jobs" : ["initial-setup"],
+						"next-phase" : ""
+				}
+			}
+		},
+
+		"aws-maintenance-pipeline" : {
+
+			"desc" : "these jobs are needed to maintain an AWS account. they are run on their own schedule and are not part of the normal CI/CD pipeline",
+
+			"generateView" : false,
+
+			"start-phase" : "maintenance",
+			
+			"phases" : {
+
+				"maintenance" : {
+						"jobs" : ["maintain-aws","setup-aws-rds","setup-aws-reset-profile","setup-aws-ingest-custom-secrets","setup-aws-generate-certs-ppd","setup-aws-generate-certs-prd"],
+						"next-phase" : ""
+				}
+			}
+		}
+
+	}
+}
+
+

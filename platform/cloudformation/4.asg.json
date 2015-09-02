@@ -1,0 +1,853 @@
+  {
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Stack for ASG",
+    "Parameters": {
+      "Role": {
+        "Type": "String",
+        "Description": "Chef role to apply to instances.",
+        "Default": "base"
+      },
+      "ChefRpmURL": {
+        "Type": "String",
+        "Description": "S3 URL to download Chef Client",
+        "Default": "s3://rpm-3rdparty-el6-us-west-2/chef-12.0.3-1.x86_64.rpm"
+      },
+      "ArtifactUrl": {
+        "Type": "String",
+        "Description": "s3 Url to download artifacts"
+      },
+      "MinimumInstances": {
+        "Type": "String",
+        "Description": "Minimum number of app instances.",
+        "Default": "1"
+      },
+      "MaximumInstances": {
+        "Type": "String",
+        "Description": "Maximum number of app instances.",
+        "Default": "2"
+      },
+      "AMIId": {
+        "Type": "String",
+        "Description": "AMI Id used for the ASG.",
+        "Default": "ami-ad34119d"
+      },
+      "VpcId": {
+        "Type": "String",
+        "Description": "VpcId required to setup the instances security group."
+      },
+      "SubnetIds": {
+        "Type": "CommaDelimitedList",
+        "Description": "Subnet ID for to launch instance, this must be in given Availability Zone."
+      },
+      "SecurityGroups": {
+        "Type": "CommaDelimitedList",
+        "Description": "Security Groups for the instances."
+      },
+      "AvailabilityZones": {
+        "Type": "CommaDelimitedList",
+        "Description": "AvailabilityZones for the instances."
+      },
+      "ProxyHost": {
+        "Type": "String",
+        "Description": "Hostname of proxy server",
+        "Default": "10.158.64.17"
+      },
+      "ProxyPort": {
+        "Type": "String",
+        "Description": "Port to connect to on proxy server",
+        "Default": "80"
+      },
+      "NoProxy": {
+        "Type": "String",
+        "Description": "no proxy hosts value",
+        "Default": "169.254.169.254,10.0.0.0/8,172.16.0.0/12,.intuit.net,corp.intuit.net,localhost,127.0.0.1"
+      },
+      "S3bucket": {
+        "Type": "String",
+        "Description": "s3bucket",
+        "Default": ""
+      },
+      "EBSEncryptionKey" : {
+        "Description" : "EBS Encryption KMS arn.",
+        "Type" : "String"
+      },
+      "SecretsS3bucket": {
+        "Type": "String",
+        "Description": "s3bucket",
+        "Default": ""
+      },
+      "SecretsEncryptionKey" : {
+        "Description" : "Encryption KMS arn for Secrets",
+        "Type" : "String"
+      },
+      "SecretsPrefix": {
+        "Type": "String",
+        "Description": "Prefix for secrets",
+        "Default": ""
+      },
+      "Abort": {
+        "Description": "Should the entire deployment be aborted if bootstraping fails?",
+        "Type": "String",
+        "AllowedValues": [
+          "yes",
+          "no"
+        ],
+        "ConstraintDescription": "yes or no",
+        "Default": "no"
+      },
+      "Version": {
+        "Type": "String",
+        "Description": "Version of the application",
+        "Default": ""
+      },
+      "Product": {
+        "Type": "String",
+        "Description": "Name of the product to deploy",
+        "Default": ""
+      },
+      "Environment": {
+        "Type": "String",
+        "Description": "The environment for this stack.",
+        "AllowedValues": [
+          "ci", "qa", "e2e", "test", "perf", "stage", "prod"
+        ],
+        "ConstraintDescription": "production or development",
+        "Default": "ci"
+      },
+      "ElasticLoadBalancer": {
+        "Description": "ELB Name",
+        "Type": "String"
+      },
+      "RuntimeData": {
+        "Description": "List of key/value pair for runtime data used for the stack",
+        "Type": "String",
+        "Default": ""
+      },
+      "KeyName": {
+        "Description": "Key pair name for instance",
+        "Type": "String",
+        "Default": ""
+      },
+      "AlarmActionWarning": {
+        "Description": "Alarm Action for Alerts",
+        "Type": "String"
+      },
+      "AlarmActionCritical": {
+        "Description": "Alarm Action for Alerts",
+        "Type": "String"
+      },
+      "InstanceType": {
+        "Description": "EC2 instance type",
+        "Type": "String",
+        "AllowedValues": [
+          "m3.medium",
+          "m3.large",
+          "c3.large",
+          "c3.xlarge",
+          "c3.2xlarge",
+          "c3.4xlarge"
+        ],
+        "ConstraintDescription": "must be a valid EC2 instance type.",
+        "Default": "m3.medium"
+      },
+      "EbsOptimized": {
+        "Description": "EbsOptimized",
+        "Type": "String",
+        "Default": "false"
+      }
+    },
+    "Mappings": {
+      "BootstrapSettingMap": {
+        "abort": {
+          "yes": "$?",
+          "no": "0"
+        }
+      },
+      "S3Map": {
+        "us-east-1": {
+          "s3": "s3:/",
+          "http": "http://s3.amazonaws.com",
+          "https": "https://s3.amazonaws.com",
+          "endpoint": "s3.amazonaws.com"
+        },
+        "us-west-1": {
+          "s3": "s3:/",
+          "http": "http://s3-us-west-1.amazonaws.com",
+          "https": "https://s3-us-west-1.amazonaws.com",
+          "endpoint": "s3-us-west-1.amazonaws.com"
+        },
+        "us-west-2": {
+          "s3": "s3:/",
+          "http": "http://s3-us-west-2.amazonaws.com",
+          "https": "https://s3-us-west-2.amazonaws.com",
+          "endpoint": "s3-us-west-2.amazonaws.com"
+        },
+        "sa-east-1": {
+          "s3": "s3:/",
+          "http": "http://s3-sa-east-1.amazonaws.com",
+          "https": "https://s3-sa-east-1.amazonaws.com",
+          "endpoint": "s3-sa-east-1.amazonaws.com"
+        }
+      },
+      "CloudWatchMap": {
+        "us-east-1": {
+          "http": "http://monitoring.us-east-1.amazonaws.com",
+          "https": "https://monitoring.us-east-1.amazonaws.com"
+        },
+        "us-west-1": {
+          "http": "monitoring.us-west-1.amazonaws.com",
+          "https": "monitoring.us-west-1.amazonaws.com"
+        },
+        "us-west-2": {
+          "http": "http://monitoring.us-west-2.amazonaws.com  ",
+          "https": "https://monitoring.us-west-2.amazonaws.com  "
+        },
+        "sa-east-1": {
+          "http": "http://monitoring.sa-east-1.amazonaws.com",
+          "https": "https://monitoring.sa-east-1.amazonaws.com"
+        }
+      },
+      "EC2Map": {
+        "us-east-1": {
+          "http": "http://ec2.us-east-1.amazonaws.com",
+          "https": "https://ec2.us-east-1.amazonaws.com"
+        },
+        "us-west-1": {
+          "http": "ec2.us-west-1.amazonaws.com",
+          "https": "ec2.us-west-1.amazonaws.com"
+        },
+        "us-west-2": {
+          "http": "http://ec2.us-west-2.amazonaws.com  ",
+          "https": "https://ec2.us-west-2.amazonaws.com  "
+        },
+        "sa-east-1": {
+          "http": "http://ec2.sa-east-1.amazonaws.com",
+          "https": "https://ec2.sa-east-1.amazonaws.com"
+        }
+      }
+    },
+    "Resources": {
+      "AppServerScaleUpEmergencyPolicy" : {
+        "Type" : "AWS::AutoScaling::ScalingPolicy",
+        "Properties" : {
+          "AdjustmentType" : "ChangeInCapacity",
+          "AutoScalingGroupName" : { "Ref" : "ServerGroup" },
+          "Cooldown" : "1200",
+          "ScalingAdjustment" : "2"
+        }
+      },
+      "AppServerScaleUpPolicy" : {
+        "Type" : "AWS::AutoScaling::ScalingPolicy",
+        "Properties" : {
+          "AdjustmentType" : "ChangeInCapacity",
+          "AutoScalingGroupName" : { "Ref" : "ServerGroup" },
+          "Cooldown" : "60",
+          "ScalingAdjustment" : "1"
+        }
+      },
+      "AppServerScaleDownPolicy" : {
+        "Type" : "AWS::AutoScaling::ScalingPolicy",
+        "Properties" : {
+          "AdjustmentType" : "ChangeInCapacity",
+          "AutoScalingGroupName" : { "Ref" : "ServerGroup" },
+          "Cooldown" : "60",
+          "ScalingAdjustment" : "-1"
+        }
+      },
+      "CPUAlarmCritical": {
+       "Type": "AWS::CloudWatch::Alarm",
+       "Properties": {
+          "AlarmDescription": "Scale-up if CPU > 85% for 5 minutes",
+          "MetricName": "CPUUtilization",
+          "Namespace": "AWS/EC2",
+          "Statistic": "Average",
+          "Period": "60",
+          "EvaluationPeriods": "10",
+          "Threshold": "75",
+          "AlarmActions": [ { "Ref": "AppServerScaleUpPolicy" }, { "Ref": "AlarmActionCritical" } ],
+          "Dimensions": [
+            {
+              "Name": "AutoScalingGroupName",
+              "Value": { "Ref": "ServerGroup" }
+            }
+          ],
+          "ComparisonOperator": "GreaterThanThreshold"
+        }
+      },
+      "CPUAlarmWarning": {
+       "Type": "AWS::CloudWatch::Alarm",
+       "Properties": {
+          "AlarmDescription": "Scale-up if CPU > 75% for 5 minutes",
+          "MetricName": "CPUUtilization",
+          "Namespace": "AWS/EC2",
+          "Statistic": "Average",
+          "Period": "60",
+          "EvaluationPeriods": "5",
+          "Threshold": "70",
+          "AlarmActions": [ { "Ref": "AlarmActionWarning" } ],
+          "Dimensions": [
+            {
+              "Name": "AutoScalingGroupName",
+              "Value": { "Ref": "ServerGroup" }
+            }
+          ],
+          "ComparisonOperator": "GreaterThanThreshold"
+        }
+      },
+      "CPUAlarmLow": {
+       "Type": "AWS::CloudWatch::Alarm",
+       "Properties": {
+          "AlarmDescription": "Scale-down if CPU < 70% for 5 minutes",
+          "MetricName": "CPUUtilization",
+          "Namespace": "AWS/EC2",
+          "Statistic": "Average",
+          "Period": "60",
+          "EvaluationPeriods": "5",
+          "Threshold": "70",
+          "AlarmActions": [ { "Ref": "AppServerScaleDownPolicy" } ],
+          "Dimensions": [
+            {
+              "Name": "AutoScalingGroupName",
+              "Value": { "Ref": "ServerGroup" }
+            }
+          ],
+          "ComparisonOperator": "LessThanThreshold"
+        }
+      },
+      "InstanceStatusAlarmCritical": {
+       "Type": "AWS::CloudWatch::Alarm",
+       "Properties": {
+          "AlarmDescription": "Scale-up if CPU > 90% for 5 minutes",
+          "MetricName": "StatusCheckFailed",
+          "Namespace": "AWS/EC2",
+          "Statistic": "Maximum",
+          "Period": "60",
+          "EvaluationPeriods": "5",
+          "Threshold": "0",
+          "AlarmActions": [ { "Ref": "AlarmActionCritical" } ],
+          "Dimensions": [
+            {
+              "Name": "AutoScalingGroupName",
+              "Value": { "Ref": "ServerGroup" }
+            }
+          ],
+          "ComparisonOperator": "GreaterThanThreshold"
+        }
+      },
+      "RootDiskSpaceUtilizationAlarmCritical": {
+       "Type": "AWS::CloudWatch::Alarm",
+       "Properties": {
+          "AlarmDescription": "DiskSpaceUtilization > 90% for 10 minutes",
+          "MetricName": "DiskSpaceUtilization",
+          "Namespace": "System/Linux",
+          "Statistic": "Average",
+          "Period": "300",
+          "EvaluationPeriods": "2",
+          "Threshold": "90",
+          "AlarmActions": [ { "Ref": "AlarmActionCritical" } ],
+          "Dimensions": [
+            {
+              "Name": "AutoScalingGroupName",
+              "Value": { "Ref": "ServerGroup" }
+            },
+            {
+              "Name": "Filesystem",
+              "Value": "/dev/xvda1"
+            },
+            {
+              "Name": "MountPath",
+              "Value": "/"
+            }    
+          ],
+          "ComparisonOperator": "GreaterThanThreshold"
+        }
+      },
+      "RootDiskSpaceUtilizationAlarmWarning": {
+       "Type": "AWS::CloudWatch::Alarm",
+       "Properties": {
+          "AlarmDescription": "DiskSpaceUtilization > 80% for 5 minutes",
+          "MetricName": "DiskSpaceUtilization",
+          "Namespace": "System/Linux",
+          "Statistic": "Average",
+          "Period": "60",
+          "EvaluationPeriods": "5",
+          "Threshold": "80",
+          "AlarmActions": [ { "Ref": "AlarmActionWarning" } ],
+          "Dimensions": [
+            {
+              "Name": "AutoScalingGroupName",
+              "Value": { "Ref": "ServerGroup" }
+            },
+            {
+              "Name": "Filesystem",
+              "Value": "/dev/xvda1"
+            },
+            {
+              "Name": "MountPath",
+              "Value": "/"
+            }            
+          ],
+          "ComparisonOperator": "GreaterThanThreshold"
+        }
+      },
+      "AppDiskSpaceUtilizationAlarmCritical": {
+       "Type": "AWS::CloudWatch::Alarm",
+       "Properties": {
+          "AlarmDescription": "DiskSpaceUtilization > 90% for 10 minutes",
+          "MetricName": "DiskSpaceUtilization",
+          "Namespace": "System/Linux",
+          "Statistic": "Average",
+          "Period": "300",
+          "EvaluationPeriods": "2",
+          "Threshold": "90",
+          "AlarmActions": [ { "Ref": "AlarmActionCritical" } ],
+          "Dimensions": [
+            {
+              "Name": "AutoScalingGroupName",
+              "Value": { "Ref": "ServerGroup" }
+            },
+            {
+              "Name": "Filesystem",
+              "Value": "/dev/xvdh"
+            },
+            {
+              "Name": "MountPath",
+              "Value": "/app"
+            }    
+          ],
+          "ComparisonOperator": "GreaterThanThreshold"
+        }
+      },
+      "AppDiskSpaceUtilizationAlarmWarning": {
+       "Type": "AWS::CloudWatch::Alarm",
+       "Properties": {
+          "AlarmDescription": "DiskSpaceUtilization > 80% for 5 minutes",
+          "MetricName": "DiskSpaceUtilization",
+          "Namespace": "System/Linux",
+          "Statistic": "Average",
+          "Period": "60",
+          "EvaluationPeriods": "5",
+          "Threshold": "80",
+          "AlarmActions": [ { "Ref": "AlarmActionWarning" } ],
+          "Dimensions": [
+            {
+              "Name": "AutoScalingGroupName",
+              "Value": { "Ref": "ServerGroup" }
+            },
+            {
+              "Name": "Filesystem",
+              "Value": "/dev/xvdh"
+            },
+            {
+              "Name": "MountPath",
+              "Value": "/app"
+            }            
+          ],
+          "ComparisonOperator": "GreaterThanThreshold"
+        }
+      },
+      "MemoryUtilizationAlarmCritical": {
+       "Type": "AWS::CloudWatch::Alarm",
+       "Properties": {
+          "AlarmDescription": "MemoryUtilization > 90% for 5 minutes",
+          "MetricName": "MemoryUtilization",
+          "Namespace": "System/Linux",
+          "Statistic": "Average",
+          "Period": "60",
+          "EvaluationPeriods": "5",
+          "Threshold": "90",
+          "AlarmActions": [ { "Ref": "AlarmActionCritical" } ],
+          "Dimensions": [
+            {
+              "Name": "AutoScalingGroupName",
+              "Value": { "Ref": "ServerGroup" }
+            }
+          ],
+          "ComparisonOperator": "GreaterThanThreshold"
+        }
+      },
+      "MemoryUtilizationAlarmWarning": {
+       "Type": "AWS::CloudWatch::Alarm",
+       "Properties": {
+          "AlarmDescription": "MemoryUtilization > 80% for 5 minutes",
+          "MetricName": "MemoryUtilization",
+          "Namespace": "System/Linux",
+          "Statistic": "Average",
+          "Period": "60",
+          "EvaluationPeriods": "5",
+          "Threshold": "80",
+          "AlarmActions": [ { "Ref": "AlarmActionWarning" } ],
+          "Dimensions": [
+            {
+              "Name": "AutoScalingGroupName",
+              "Value": { "Ref": "ServerGroup" }
+            }
+          ],
+          "ComparisonOperator": "GreaterThanThreshold"
+        }
+      },
+
+
+      "InstancesIamPolicy": {
+        "Type": "AWS::IAM::Policy",
+        "Properties": {
+          "PolicyName": "instances_iam_policy",
+          "PolicyDocument": {
+            "Statement":[
+              {
+                "Effect": "Allow",
+                "Action": "cloudformation:DescribeStackResource",
+                "Resource": "*"
+              },
+              {
+                "Effect": "Allow",
+                "Action": [ "s3:Get*", "s3:List*" ],
+                "Resource": [
+                  "arn:aws:s3:::bin-3rdparty-us-west-2",
+                  "arn:aws:s3:::iss-slingshot-default-secrets-us-west-2",
+                  "arn:aws:s3:::rpm-3rdparty-el6-us-west-2",
+                  "arn:aws:s3:::rpm-epel-el6-us-west-2",
+                  { "Fn::Join": [ "", [ "arn:aws:s3:::bin-3rdparty-us-west-2/*"] ] },
+                  { "Fn::Join": [ "", [ "arn:aws:s3:::iss-slingshot-default-secrets-us-west-2/*"] ] },
+                  { "Fn::Join": [ "", [ "arn:aws:s3:::rpm-3rdparty-el6-us-west-2/*"] ] },
+                  { "Fn::Join": [ "", [ "arn:aws:s3:::rpm-epel-el6-us-west-2/*"] ] },    
+                  { "Fn::Join": [ "", [ "arn:aws:s3:::", {"Ref": "S3bucket"}, "/*" ] ] },
+                  { "Fn::Join": [ "", [ "arn:aws:s3:::", {"Ref": "SecretsS3bucket"}, "/", {"Ref": "SecretsPrefix"}, "/*"] ] }
+                ]
+              },
+              {
+                "Effect": "Allow",
+                "Action": [ "s3:List*" ],
+                "Resource": [
+                  { "Fn::Join": [ "", [ "arn:aws:s3:::", {"Ref": "SecretsS3bucket"} ] ] }
+                ]
+              },
+              {
+                "Effect": "Allow",
+                "Action": "ec2:Describe*",
+                "Resource": "*"
+              },
+              {
+                "Effect": "Allow",
+                "Action": "autoscaling:Describe*",
+                "Resource": "*"
+              },
+              {
+                  "Effect": "Allow",
+                  "Action": ["cloudwatch:EnableAlarmActions", "cloudwatch:PutMetricData", "cloudwatch:PutMetricAlarm", "ec2:DescribeTags", "ec2:DescribeInstances"],
+                  "Resource": "*"
+              },
+              {
+                "Effect": "Allow",
+                "Action": [ "kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt", "kms:GenerateDataKey*", "kms:DescribeKey", "kms:CreateGrant", "kms:ListGrants", "kms:RevokeGrant" ],
+                "Resource": {"Ref": "EBSEncryptionKey"}
+              },
+              {
+                "Effect": "Allow",
+                "Action": [ "ec2:CreateTags" ],
+                "Resource": "*"
+              },
+              {
+                "Effect": "Allow",
+                "Action": [ "ec2:CreateVolume", "ec2:AttachVolume" ],
+                "Resource": "*"
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "kms:Decrypt", "kms:DescribeKey"
+                ],
+                "Resource": { "Ref": "SecretsEncryptionKey" }
+              }
+
+            ]
+          },
+          "Roles": [{"Ref": "InstancesIamRole"}]
+        }
+      },
+
+      "InstancesIamRole": {
+        "Type": "AWS::IAM::Role",
+        "Properties": {
+          "AssumeRolePolicyDocument": {
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": { "Service": ["ec2.amazonaws.com"] },
+                "Action": ["sts:AssumeRole"]
+              }
+            ]
+          },
+          "Path": "/"
+        }
+      },
+
+      "InstancesIamProfile": {
+        "Type": "AWS::IAM::InstanceProfile",
+        "Properties": {
+          "Path": "/",
+          "Roles": [
+            { "Ref": "InstancesIamRole" }
+          ]
+        }
+      },
+
+      "ServerGroup": {
+        "Type": "AWS::AutoScaling::AutoScalingGroup",
+          "UpdatePolicy" : {
+            "AutoScalingRollingUpdate" : {
+            "MaxBatchSize" : "3",
+            "MinInstancesInService" : "2",
+            "PauseTime" : "PT15M00S",
+            "WaitOnResourceSignals": "true"
+          }
+        },
+        "Properties": {
+          "AvailabilityZones": { "Ref": "AvailabilityZones" },
+          "LaunchConfigurationName": { "Ref": "InstanceLaunchConfig" },
+          "MaxSize": { "Ref": "MaximumInstances" },
+          "MinSize": { "Ref": "MinimumInstances" },
+          "HealthCheckGracePeriod": "600",
+          "VPCZoneIdentifier": { "Ref": "SubnetIds" },
+          "LoadBalancerNames": [ { "Ref": "ElasticLoadBalancer" } ],
+          "NotificationConfiguration" : {
+            "TopicARN" : { "Ref" : "AlarmActionWarning" },
+            "NotificationTypes" : [ "autoscaling:EC2_INSTANCE_LAUNCH","autoscaling:EC2_INSTANCE_LAUNCH_ERROR","autoscaling:EC2_INSTANCE_TERMINATE", "autoscaling:EC2_INSTANCE_TERMINATE_ERROR"]
+          },
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": {
+                "Ref": "AWS::StackName"
+              },
+              "PropagateAtLaunch": "true"
+            }
+          ]
+        }
+      },
+      "InstanceLaunchConfig": {
+        "Type": "AWS::AutoScaling::LaunchConfiguration",
+        "Metadata": {
+          "AWS::CloudFormation::Init": {
+            "1": {
+              "files": {
+                "/etc/intu_metadata.d/instance_role": {
+                  "content": { "Fn::Join": [ "", [ "ROLE=", { "Ref": "Role" }, "\n" ] ] },
+                  "mode": "000400",
+                  "owner": "root",
+                  "group": "root"
+                },
+                "/etc/intu_metadata.d/deployment": {
+                  "content": { "Fn::Join": [ "", [
+                        "PRODUCT=", { "Ref": "Product" }, "\n",
+                        "VERSION=", { "Ref": "Version" }, "\n",
+                        "ENVIRONMENT=", { "Ref": "Environment" }, "\n",
+                        "S3BUCKET=", { "Ref": "S3bucket" }, "\n",
+                        "SECRETSS3BUCKET=", { "Ref": "SecretsS3bucket" }, "\n",
+                        "SECRETSKMSKEY=", { "Ref": "SecretsEncryptionKey" }, "\n",
+                        "SECRETSPREFIX=", { "Ref": "SecretsPrefix" }, "\n",
+                        "ARTIFACT_URL=", { "Ref": "ArtifactUrl" }, "\n"
+                      ]
+                    ]
+                  },
+                  "mode": "000400",
+                  "owner": "root",
+                  "group": "root"
+                },
+                "/etc/intu_metadata.d/stack": {
+                  "content": { "Fn::Join": [ "", [
+                        "NAME=", { "Ref": "AWS::StackName" }, "\n",
+                        "REGION=", { "Ref": "AWS::Region" }, "\n",
+                        "RESOURCE_NAME=InstanceLaunchConfig", "\n",
+                        "S3BUCKET=", { "Ref": "S3bucket" }, "\n",
+                        "EBS_KMS_KEY=", { "Ref": "EBSEncryptionKey" }, "\n",
+                        "EC2_URL=", { "Fn::FindInMap": [ "EC2Map", { "Ref": "AWS::Region" }, "https" ] }, "\n",
+                        "CLOUDWATCH_URL=", { "Fn::FindInMap": [ "CloudWatchMap", { "Ref": "AWS::Region" }, "https" ] }, "\n",
+                        "PROXY_HOST=", { "Ref": "ProxyHost" }, "\n",
+                        "PROXY_PORT=", { "Ref": "ProxyPort" }, "\n",
+                        "ABORT=", { "Fn::FindInMap": [ "BootstrapSettingMap", "abort", { "Ref": "Abort" } ] }, "\n",
+                        "WAIT_HANDLE=", { "Ref": "InstancesWaitHandle" }, "\n"
+                      ]
+                    ]
+                  },
+                  "mode": "000400",
+                  "owner": "root",
+                  "group": "root"
+                },
+                "/etc/profile.d/proxy.sh": {
+                  "content": { "Fn::Join": [ "", [
+                        "export http_proxy=http://", { "Ref": "ProxyHost" }, ":", { "Ref": "ProxyPort" }, "\n",
+                        "export https_proxy=http://", { "Ref": "ProxyHost" }, ":", { "Ref": "ProxyPort" }, "\n",
+                        "export no_proxy=", { "Ref": "NoProxy" }, "\n"
+                      ]
+                    ]
+                  },
+                  "mode": "000644",
+                  "owner": "root",
+                  "group": "root"
+                }
+              }
+            },
+            "2": {
+              "commands": {
+                "0_download_chef_artifact": {
+                  "command": { "Fn::Join": [ "", [
+                        "if [[ -z \"", { "Ref": "ArtifactUrl" }, "\" ]];then\n",
+                        "# For testing purpose \n",
+                        "CHEF_REPO_ARTIFACT=s3://", { "Ref": "S3bucket"}, "/chef-repo.zip\n",
+                        "else\n",
+                        "CHEF_REPO_ARTIFACT=", { "Ref": "ArtifactUrl" }, "/chef-repo.zip\n",
+                        "fi\n",
+                        "aws s3 cp $CHEF_REPO_ARTIFACT /var/tmp/chef_repo.zip\n"
+                      ]
+                    ]
+                  },
+                  "env": {
+                          "HOME": "/var/tmp",
+                          "http_proxy": { "Fn::Join": [ "", [ "http://", { "Ref": "ProxyHost" }, ":", { "Ref": "ProxyPort" } ] ] },
+                          "https_proxy": { "Fn::Join": [ "", [ "http://", { "Ref": "ProxyHost" }, ":", { "Ref": "ProxyPort" } ] ] },
+                          "no_proxy": { "Ref": "NoProxy" },
+                          "PATH": "/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/opt/aws/bin:/root/bin"
+                  }
+                },
+                "1_create_chef_dir": {
+                  "command": "mkdir -p -m 0700 /var/log/chef /etc/chef/ohai/hints && touch /etc/chef/ohai/hints/ec2.json"
+                },
+                "2_download_install_chef": {
+                  "command": { "Fn::Join": [ "", [
+                        "chef_installed=$(rpm -qa chef | wc -l)\n",
+                        "if [ $chef_installed -eq 0 ]; then\n",
+                        "aws s3 cp ", { "Ref": "ChefRpmURL"}, " /var/tmp/ && rpm -i /var/tmp/chef*.rpm && rm -f /var/tmp/chef*.rpm\n",
+                        "fi\n"
+                      ]
+                    ]
+                  },
+                  "env": {
+                          "HOME": "/var/tmp",
+                          "http_proxy": { "Fn::Join": [ "", [ "http://", { "Ref": "ProxyHost" }, ":", { "Ref": "ProxyPort" } ] ] },
+                          "https_proxy": { "Fn::Join": [ "", [ "http://", { "Ref": "ProxyHost" }, ":", { "Ref": "ProxyPort" } ] ] },
+                          "no_proxy": { "Ref": "NoProxy" },
+                          "PATH": "/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/opt/aws/bin:/root/bin"
+                  }
+                },
+                "3_create_runtime_config": {
+                  "command": { "Fn::Join": [ "", [ "echo '", { "Ref": "RuntimeData" } , "' | tr ';' '\\n' > /etc/intu_metadata.d/runtime\n", "rm -f /etc/intu_metadata.d/*.bak" ] ]
+                  }
+                },
+                "4_extract_chef_repo": {
+                  "command": { "Fn::Join": [ "", [
+                  "rm -rf /var/chef\n",
+                  "unzip /var/tmp/chef_repo.zip -d /var/chef"
+                  ] ] 
+                }
+                },
+                "5_run_chef": {
+                  "command": { "Fn::Join": [ "", [ "/usr/bin/chef-solo -c /var/chef/config/solo.rb -o 'role[", { "Ref": "Role" }, "]' -E '", { "Ref": "Environment" },"'" ] ]
+                  },
+                  "cwd": "/var/chef",
+                  "env": {
+                    "HOME": "/root",
+                    "http_proxy": { "Fn::Join": [ "", [ "http://", { "Ref": "ProxyHost" }, ":", { "Ref": "ProxyPort" } ] ] },
+                    "https_proxy": { "Fn::Join": [ "", [ "http://", { "Ref": "ProxyHost" }, ":", { "Ref": "ProxyPort" } ] ] },
+                    "no_proxy": { "Ref": "NoProxy" },
+                    "PATH": "/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/opt/aws/bin:/root/bin"
+                  }
+                }
+              }
+            },
+            "configSets": {
+              "bootstrap": [
+                "1",
+                "2"
+              ]
+            }
+          }
+        },
+        "Properties": {
+          "KeyName": { "Ref": "KeyName" },
+          "ImageId": { "Ref": "AMIId" },
+          "InstanceType": { "Ref": "InstanceType" },
+          "SecurityGroups": { "Ref": "SecurityGroups"},
+          "IamInstanceProfile": { "Ref": "InstancesIamProfile" },
+          "EbsOptimized": { "Ref": "EbsOptimized" },
+          "BlockDeviceMappings": [{"DeviceName": "/dev/sdf", "VirtualName": "ephemeral0"}, {"DeviceName": "/dev/sdg", "VirtualName": "ephemeral1"}],
+          "UserData": {
+            "Fn::Base64": { "Fn::Join": [ "", [
+                  "#!/bin/bash\n",
+                  "sed -i.bak '1 s|UTC|America/Los_Angeles|' /etc/sysconfig/clock\n",
+                  "ln -sf /usr/share/zoneinfo/America/Los_Angeles /etc/localtime\n",
+                  "ntpd -q\n",
+                  "service ntpd start\n",
+                  "chkconfig ntpd on\n",
+                  "export LANG=C.UTF-8\n",
+                  "export LC_ALL=en_US.UTF-8\n",
+                  "cat <<PROXY_EOF>>/etc/yum.conf\n",
+                  "proxy=http://", { "Ref": "ProxyHost" }, ":", { "Ref": "ProxyPort" }, "\n",
+                  "PROXY_EOF\n",
+                  "\n",
+                  "sed -i 's/enabled=1/enabled=0/' /etc/yum/pluginconf.d/rhui-lb.conf\n",
+                  "\n",
+                  "cat <<EOF_DNS>/etc/resolv.conf\n",
+                  "options rotate single-request-reopen\n",
+                  "\n",
+                  "# AWS internal DNS\n",
+                  "# Comment the next line to only use Intuit DNS servers;\n",
+                  "# This nameserver is normally not resolveable from inside a VPC\n",
+                  "#nameserver 172.16.0.23\n",
+                  "# QDC name servers (primary)\n",
+                  "nameserver 10.152.250.240\n",
+                  "nameserver 10.152.250.241\n",
+                  "nameserver 10.152.250.242\n",
+                  "# LVDC name servers (backup)\n",
+                  "nameserver 10.180.194.67\n",
+                  "nameserver 10.180.194.68\n",
+                  "EOF_DNS\n",
+                  "sed -i 's/cds01/cds02/g' /etc/yum.repos.d/*.repo\n",
+                  "cat > /etc/yum.repos.d/intu-packages-us-west-2.repo << EOS\n",
+                  "[intu-packages-us-west-2]\n",
+                  "name=Intuit Custom RPM Packages\n",
+                  "baseurl=http://s3-us-west-2.amazonaws.com/intu-packages-us-west-2/rhel/6/x86_64\n",
+                  "gpgcheck=0\n",
+                  "enabled=1\n",
+                  "EOS\n",
+                  "yum clean all\n",
+                  "\n",
+                  "export http_proxy=http://", { "Ref": "ProxyHost" }, ":", { "Ref": "ProxyPort" }, "\n",
+                  "export https_proxy=http://", { "Ref": "ProxyHost" }, ":", { "Ref": "ProxyPort" }, "\n",
+                  "export no_proxy=", { "Ref": "NoProxy" }, "\n",
+                  "/usr/bin/cfn-init ", " --verbose", " -s ", { "Ref": "AWS::StackName" }, " -r InstanceLaunchConfig", " -c bootstrap", " --region=", { "Ref": "AWS::Region" }, "\n",
+                  "/usr/bin/cfn-signal -e ", { "Fn::FindInMap": [ "BootstrapSettingMap", "abort", { "Ref": "Abort" } ] }, " '", { "Ref": "InstancesWaitHandle" }, "'\n"
+                ]
+              ]
+            }
+          }
+        }
+      },
+      "InstancesWaitHandle": {
+        "Type": "AWS::CloudFormation::WaitConditionHandle",
+        "Properties": {}
+      },
+      "InstancesWaitCondition": {
+        "Type": "AWS::CloudFormation::WaitCondition",
+        "DependsOn": [
+          "InstanceLaunchConfig",
+          "ServerGroup"
+        ],
+        "Properties": {
+          "Handle": {
+            "Ref": "InstancesWaitHandle"
+          },
+          "Count": "1",
+          "Timeout": "2500"
+        }
+      }
+    },
+    "Outputs": {
+      "InstanceAutoScalingGroup": {
+        "Value": {
+          "Ref": "ServerGroup"
+        },
+        "Description": "App Instances Auto Scaling Group ID"
+      }
+    }
+  }

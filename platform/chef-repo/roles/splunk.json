@@ -1,0 +1,83 @@
+{
+  "name": "splunk",
+  "description": "A role to configure splunk",
+  "json_class": "Chef::Role",
+  "default_attributes": {
+  },
+  "override_attributes": {
+    "splunk": {
+      "forwarder": {
+        "inputs": {
+          "monitor": {
+            "/logs/*/cto-aws/var/log/audit/audit.log": {
+              "idx": "smallbiz-ppdidx",
+              "_tcp_routing": "cto-aws"
+            },
+            "/logs/*/cto-aws/var/log/messages": {
+              "idx": "smallbiz-ppdidx",
+              "_tcp_routing": "cto-aws"
+            },
+            "/logs/*/cto-aws/var/log/secure": {
+              "idx": "smallbiz-ppdidx",
+              "_tcp_routing": "cto-aws"
+            },
+            "/logs/*/cto-aws/var/log/yum.log": {
+              "idx": "smallbiz-ppdidx",
+              "_tcp_routing": "cto-aws"
+            },
+            "/logs/*/cto-aws/var/log/chef/chef.log": {
+              "idx": "smallbiz-ppdidx",
+              "_tcp_routing": "cto-aws"
+            },
+            "/logs/*/cto-aws/app/logs/nginx/*": {
+              "idx": "smallbiz-ppdidx",
+              "_tcp_routing": "cto-aws"
+            },
+            "/logs/*/cto-aws/usr/local/tomcat/logs/catalina.out": {
+              "idx": "smallbiz-ppdidx",
+              "sourcetype": "log4j",
+              "_tcp_routing": "cto-aws"
+            },
+            "/logs/*/cto-aws/usr/local/tomcat/logs/*": {
+              "idx": "smallbiz-ppdidx",
+              "blacklist": "catalina\\.out|gz$",
+              "_tcp_routing": "cto-aws"
+            },
+            "/logs/*/sbg-aws-*/var/log/messages": {
+              "idx": "smallbiz"
+            },
+            "/logs/*/sbg-aws-*/app/logs/nginx/*": {
+              "idx": "smallbiz"
+            },
+            "/logs/*/sbg-aws-*/usr/local/tomcat/logs/catalina.out": {
+              "idx": "smallbiz",
+              "sourcetype": "log4j"
+            },
+            "/logs/*/sbg-aws-*/usr/local/tomcat/logs/*": {
+              "idx": "smallbiz",
+              "blacklist": "catalina\\.out|gz$"
+            }
+          }
+        },
+        "outputs": {
+          "tcpout": {
+            "cto-aws": {
+              "enable": true,
+              "default": false
+            },
+            "sbg-aws-preprod": {
+              "enable": true,
+              "default": true
+            }
+          }
+        }
+      }
+    }
+  },
+  "chef_type": "role",
+  "run_list": [
+    "recipe[splunk]"
+  ],
+  "env_run_lists": {
+  }
+}

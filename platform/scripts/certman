@@ -1,0 +1,609 @@
+#!/bin/bash
+# certman v1.0.5, last updated 2015/06/12
+export PATH=/bin:/usr/bin
+umask 0077
+
+BASEURL=https://venafi.intuit.com/vedsdk
+AUTHJSON=$HOME/.auth.json
+APIKEYFILE=$HOME/.apikey
+OUTPUTFILE=$HOME/venafi-cert.out
+TEMPJSON=$HOME/.certman-request.json
+
+# set action (command)
+action=$1; shift
+
+debug() {
+    [ "$_DEBUG" == "on" ] &&  "$@"
+}
+
+usage() {
+cat<<EOF
+Usage:
+    certman <command> <common parameters> <command-specific parameters>
+
+	<command>		: request | retrieve | renew | revoke
+
+	<common parameters>	: [ -b <base url> ] [ -u <username> -p <password> ] [ -a <auth.json> ] [ -k <apikey> ] [ -d ]
+
+	-b <base url>		: base URL for Venafi API, defaults to https://venafi.intuit.com/vedsdk.
+	-u <username>		: user name for Venafi API URL (does not need to be specified on subsequent runs).
+	-p <password>		: password for Venafi API URL (does not need to be specified on subsequent runs).
+	-a <auth.json>		: path to a json file where credentials will be saved.
+				  <username>/<password> do not need to be specified on subsequent runs.
+	-k <apikey>		: path to a file where API key is saved.
+				  It will be re-used on subsequent runs unless it is expired.
+	-d			: print debug information.
+
+	<command-specific parameters>	: depend on the command. See below.
+
+    certman retrieve <common parameters> [ -P ] [ -n ] [ -o <output file> ] [ -w <passphrase> ] [ -c ] <certificate path>
+
+	<certificate path>	: path to certificate in Venafi, i.e., \"\VED\Policy\PCS\Intuit Internal CA\test.intuit.com\".
+	-o <output file>	: path to output file (in PEM or PKCS12 format). Default is \$HOME/venafi-cert.out.
+	-P 			: save in PKCS12 format instead of PEM. PEM is default.
+	-n			: don't encrypt private key when in PEM format (not applicable if -p is also specified).
+	-w <passphrase>		: set passphrase for PKCS12 (.p12 or .pfx) file or private key in pem format.
+				  By default, a random passphrase is generated for p12 file or private key and printed on screen.
+	-c			: include parent certificate chain.
+
+    certman request <common parameters> -P <PolicyDN> -T <CADN> [ -N <ObjectName> ] -S <Common Name> -U <OrganizationalUnit> -O <Organization> -C <City> -s <State> -c <Country> [ -K <KeyBitSize> ] [ -l <validity period> ] [ -A <SubjectAltNames> ]
+
+	-P <PolicyDN>		: a folder in Venafi where the certificate object will be created (i.e., \"\\VED\\Policy\\PCS\\Intuit Internal CA\").
+	-T <CADN>		: a CA Template object that should be used to enroll for the certificate.
+	-N <ObjectName>		: object name to be used for the certificate object (optional). If not specified, <Common Name> will be used.
+	-S <Common Name>	: Common Name for the certficate subject (DN).
+	-U <OrganizationalUnit>	: Organizational Unit.
+	-O <Organization>	: Organization.
+	-C <City>		: City.
+	-s <State> 		: State (full name).
+	-c <Country>  		: Country (two-letter code).
+	-K <KeyBitSize> 	: Key bit size (optional, may be overwritten in CA Template).
+	-l <validity period>	: Validity period (optional, may be overwritten in CA Template).
+	-A <SubjectAltNames>  	: comma-separated list of subject alternaltive names (optional).
+
+    certman renew <common parameters> <certificate path>
+
+	<certificate path>	: path to certificate in Venafi, i.e., \"\VED\Policy\PCS\Intuit Internal CA\test.intuit.com\".
+
+    certman revoke <common parameters> -R <reason> [ -f ] [ -C <comments> ] [ -D ] <certificate path>
+
+	<certificate path>	: path to certificate in Venafi, i.e., \"\VED\Policy\PCS\Intuit Internal CA\test.intuit.com\".
+	-R <reason>		: single digit between 1 and 5.
+				  1 - User key compromised.
+				  2 - CA key compromised.
+				  3 - User changed affiliation.
+				  4 - Certificate superseded.
+				  5 - Original use no longer valid.
+	-f			: force execution without prompting for confirmation.
+	-C <comments>		: Comments.
+	-D			: Disable the certificate object, in addition to revoking the certificate.
+
+    Exit Codes:
+	0			: Success.
+	1			: Incorrect parameter(s).
+	2			: couldn't create  file.
+	3			: failed to acquire api key from Venafi.
+	4			: openssl failed to generate PEM file out of PKCS12 file.
+	5			: failed to create/renew/revoke certificate object.
+	200			: failed to retrieve certificate but certificate object does exist.
+	above 200		: failed to retrieve certificate and certificate object existence couldn't be verified.
+EOF
+    exit 1
+}
+
+requestapikey() {
+    OUTPUT="$(curl --progress-bar --data-binary @${AUTHJSON} -H "Content-Type: application/json" $BASEURL/Authorize/ 2>&1)"
+    debug echo "$OUTPUT"
+    APIKEY=$(echo "$OUTPUT" | grep APIKey | cut -d{ -f2 | cut -d: -f2 | cut -d\" -f2)
+
+    if [[ -n "$APIKEY" ]]
+    then
+	debug echo "Acquired API KEY: $APIKEY"
+	debug echo "Saving API KEY to $APIKEYFILE"
+
+	echo $APIKEY > $APIKEYFILE
+
+	if [[ $? -ne 0 ]]
+	then
+	    echo "Couldn't create api key file: $APIKEYFILE"
+	    exit 2
+	fi
+    else
+	debug echo "APIKEY is empty"
+	exit 3
+    fi
+}
+
+getapikey() {
+	# Get API key
+	if [[ -f $APIKEYFILE ]]
+	then
+	    debug echo "Reading API KEY from $APIKEYFILE"
+	    APIKEY=$(cat $APIKEYFILE)
+	    debug echo "API KEY: $APIKEY"
+
+	    # validate the api key
+	    OUTPUT="$(curl -v $BASEURL/Authorize/checkvalid?apikey=$APIKEY 2>&1)"
+	    debug echo "$OUTPUT"
+	    httpRC=$(echo "$OUTPUT" | awk '/< HTTP\// {sub(".*HTTP/[0-9]\.[0-9] ",""); httprc=$1} END {print httprc}' 2>/dev/null)
+
+	    if [[ $httpRC -ne 200 ]]
+	    then
+		debug echo "Expired API KEY: $APIKEY"
+		debug echo "Requesting new API KEY"
+		requestapikey
+	    else
+		debug echo "Successfully checked validity of API KEY: $APIKEY"
+	    fi
+	else
+	    requestapikey
+	fi
+}
+
+checkcredentials() {
+    if [[ -z "$username" && -z "$password" ]]
+    then
+	debug echo "Username and password were not supplied"
+	if [[ ! -f $AUTHJSON ]]
+	then
+	    echo "No authorization json file: $AUTHJSON, Use -u <username> -p <password> options in the first run."
+	fi
+    else
+        if [[ -n "$username" && -n "$password" ]]
+        then
+    	    debug echo "Writing a new authorization json file: $AUTHJSON"
+    	    echo "{ \"Username\": \"$username\", \"Password\": \"$password\" }" > $AUTHJSON
+    	    if [[ $? -ne 0 ]]
+    	    then
+		echo "Couldn't create auth json file: $AUTHJSON"
+		exit 2
+    	    fi
+        else
+    	    usage
+        fi
+    fi
+}
+
+case $action in
+    retrieve)
+	while getopts ":du:p:a:k:b:Pw:no:c" opt
+	do
+	    case $opt in
+		d)
+		    _DEBUG=on
+		;;
+		u)
+		    username=$OPTARG
+		;;
+		p)
+		    password=$OPTARG
+		;;
+		a)
+		    AUTHJSON=$OPTARG
+		;;
+		k)
+		    APIKEYFILE=$OPTARG
+		;;
+		b)
+		    BASEURL=$OPTARG
+		;;
+		P)
+		    pkcs12=yes
+		;;
+		w)
+		    PASSPHRASE=$OPTARG
+		;;
+		n)
+		    dontencryptkey=yes
+		;;
+		o)
+		    OUTPUTFILE=$OPTARG
+		;;
+		c)
+		    includechain=yes
+		;;
+		*)
+		    usage
+		;;
+	    esac
+	done
+
+	# Verify usage syntax
+	shift $((OPTIND-1))
+	if [[ -n "$1" ]]; then VenCertDN="$1"; else usage; fi
+	shift
+	if [[ -n "$1" ]]; then usage; fi
+
+	checkcredentials
+
+	# Get API key
+	getapikey
+
+	# generate random passphrase if one was not provided with the -w option.
+	PASSPHRASE=${PASSPHRASE:-$(openssl rand -hex 8)}
+
+	# Replace white spaces in URL if any
+	if [[ -z "$includechain" ]]; then includechain=no; fi
+	URL="$(echo "$BASEURL/certificates/Retrieve?apikey=$APIKEY&CertificateDN=$VenCertDN&Password=$PASSPHRASE&Format=PKCS%20%2312&FriendlyName=mycert&IncludeChain=$includechain" | sed 's/ /%20/g')"
+
+	OUTPUT="$(curl -v -o $OUTPUTFILE.p12 --progress-bar "$URL" 2>&1)"
+	debug echo "$OUTPUT"
+	httpRC=$(echo "$OUTPUT" | awk '/< HTTP\// {sub(".*HTTP/[0-9]\.[0-9] ",""); httprc=$1} END {print httprc}' 2>/dev/null)
+
+	if [[ $httpRC -eq 200 ]]
+	then
+	    if [[ "$pkcs12" = "yes" ]]
+	    then
+		echo "PKCS12 file passprase: $PASSPHRASE"
+		mv $OUTPUTFILE.p12 $OUTPUTFILE
+	    else
+		if [[ "$dontencryptkey" = "yes" ]]
+		then
+		    encopt="-nodes"
+		else
+		    echo "Private key passphrase: $PASSPHRASE"
+		    encopt="-passout pass:$PASSPHRASE"
+		fi
+
+		OUTPUT="$(openssl pkcs12 -in $OUTPUTFILE.p12 -passin pass:$PASSPHRASE $encopt -nomacver | awk '/BEGIN.*PRIVATE KEY/,/END.*PRIVATE KEY/ {print} /BEGIN CERTIFICATE/,/END CERTIFICATE/ {print}' > $OUTPUTFILE)"
+
+		debug echo "$OUTPUT"
+
+		if [[ ! -s $OUTPUTFILE ]]
+		then
+		    echo "openssl failed to process pkcs12 file: $OUTPUTFILE.p12"
+		    exit 4
+		fi
+		rm -f $OUTPUTFILE.p12
+	    fi
+	else
+	    echo "Failed to retrieve the certificate: HTTP $httpRC"
+
+	    # Verify that the certificate object at least exists
+	    echo "{\"ObjectDN\": \"$VenCertDN\"}" | sed -e 's/\\/\\\\/g' > $TEMPJSON
+
+	    debug cat $TEMPJSON
+
+	    OUTPUT="$(curl -v --progress-bar --data-binary @$TEMPJSON -H "Content-Type: application/json" https://venafi.intuit.com/vedsdk/Config/IsValid?apikey=$APIKEY 2>&1)"
+	    debug echo "$OUTPUT"
+	    httpRC=$(echo "$OUTPUT" | awk '/< HTTP\// {sub(".*HTTP/[0-9]\.[0-9] ",""); httprc=$1} END {print httprc}' 2>/dev/null)
+	    returnmsg="$(echo "$OUTPUT" | tail -1)"
+
+	    if [[ $httpRC -eq 200 ]]
+	    then
+		if [[ -n "$(echo $returnmsg | awk 'BEGIN {FS=","} /AbsoluteGUID/ {print $2}')" ]]
+		then
+		    echo "Certificate object exists: \"$VenCertDN\""
+		    exit $httpRC
+		fi
+		exit 202
+	    else
+		echo "Couldn't verify the existence of the object: $VenCertDN"
+		exit $httpRC
+	    fi
+	fi
+	debug echo "Saved certificate into $OUTPUTFILE"
+	debug ls -l $OUTPUTFILE
+    ;;
+    request)
+	while getopts ":du:p:a:k:b:P:T:N:S:U:O:C:s:c:K:l:A:" opt
+	do
+	    case $opt in
+		d)
+		    _DEBUG=on
+		;;
+		u)
+		    username=$OPTARG
+		;;
+		p)
+		    password=$OPTARG
+		;;
+		a)
+		    AUTHJSON=$OPTARG
+		;;
+		k)
+		    APIKEYFILE=$OPTARG
+		;;
+		b)
+		    BASEURL=$OPTARG
+		;;
+		P)
+		    PolicyDN="$OPTARG"
+		;;
+		T)
+		    CADN="$OPTARG"
+		;;
+		N)
+		    ObjectName=$OPTARG
+		;;
+		S)
+		    Subject=$OPTARG
+		;;
+		U)
+		    OrganizationalUnit=$OPTARG
+		;;
+		O)
+		    Organization=$OPTARG
+		;;
+		C)
+		    City=$OPTARG
+		;;
+		s)
+		    State=$OPTARG
+		;;
+		c)
+		    Country=$OPTARG
+		;;
+		K)
+		    KeyBitSize=$OPTARG
+		;;
+		l)
+		    validityperiod=$OPTARG
+		;;
+		A)
+		    SubjectAltNames=$OPTARG
+		;;
+		*)
+		    usage
+		;;
+	    esac
+	done
+
+	shift $((OPTIND-1))
+	if [[ -n "$1" ]]; then usage; fi
+	if [[ -z "$PolicyDN" || -z "$CADN" || -z "$Subject" || -z "$OrganizationalUnit" || -z "$Organization" || -z "$City" || -z "$State" || -z "$Country" ]]; then usage; fi
+
+	checkcredentials
+
+	# Get API key
+	getapikey
+
+	echo '{'                                                        > $TEMPJSON
+	echo "  \"PolicyDN\": \"$PolicyDN\"," | sed -e 's/\\/\\\\/g'   >> $TEMPJSON
+	echo "  \"CADN\": \"$CADN\"," | sed -e 's/\\/\\\\/g'           >> $TEMPJSON
+	echo "  \"Subject\": \"$Subject\","                            >> $TEMPJSON
+	echo "  \"OrganizationalUnit\": \"$OrganizationalUnit\","      >> $TEMPJSON
+	echo "  \"Organization\": \"$Organization\","                  >> $TEMPJSON
+	echo "  \"City\": \"$City\","                                  >> $TEMPJSON
+	echo "  \"State\": \"$State\","                                >> $TEMPJSON
+	echo "  \"Country\": \"$Country\","                            >> $TEMPJSON
+
+	if [[ -n "$ObjectName" ]]
+	then
+	    echo "  \"ObjectName\": \"$ObjectName\","                  >> $TEMPJSON
+	fi
+
+	if [[ -n "$KeyBitSize" ]]
+	then
+	    echo "  \"KeyBitSize\": \"$KeyBitSize\","                  >> $TEMPJSON
+	fi
+
+	validityperiod=${validityperiod:-365}
+
+	echo '  "CASpecificAttributes": ['              >> $TEMPJSON
+	echo '    {'                                    >> $TEMPJSON
+	echo '      "Name": "Validity Period",'         >> $TEMPJSON
+	echo "      \"Value\": \"$validityperiod\""     >> $TEMPJSON
+	echo '    }'                                    >> $TEMPJSON
+	echo '  ],'                                     >> $TEMPJSON
+
+	echo '  "SubjectAltNames": ['                   >> $TEMPJSON
+	for i in $(echo $SubjectAltNames | tr "," " ")
+	do
+	    echo '    {'                                >> $TEMPJSON
+	    echo '      "Type": 2,'                     >> $TEMPJSON
+	    echo "      \"Name\": \"$i\""               >> $TEMPJSON
+	    echo '    },'                               >> $TEMPJSON
+	done
+
+	echo '  ],'        >> $TEMPJSON
+	echo '}'           >> $TEMPJSON
+
+	if [[ $? -ne 0 ]]
+	then
+	    echo "Couldn't create request json file: $TEMPJSON"
+	    exit 2
+	fi
+
+	debug cat $TEMPJSON
+
+	OUTPUT="$(curl -v --progress-bar --data-binary @$TEMPJSON -H "Content-Type: application/json" $BASEURL/certificates/Request?apikey=$APIKEY 2>&1)"
+	debug echo "$OUTPUT"
+	httpRC=$(echo "$OUTPUT" | awk '/< HTTP\// {sub(".*HTTP/[0-9]\.[0-9] ",""); httprc=$1} END {print httprc}' 2>/dev/null)
+
+	if [[ $httpRC -eq 200 ]]
+	then
+	    VenCertDN=$(echo "$OUTPUT" | grep CertificateDN | cut -d\" -f4)
+	    echo "Created certificate object: $VenCertDN"
+	else
+	    echo "Failed to create certificate object, $Subject: HTTP $httpRC"
+	    exit 5
+	fi
+
+	rm -f $TEMPJSON
+	exit 0
+    ;;
+    renew)
+	while getopts ":du:p:a:k:b:" opt
+	do
+	    case $opt in
+		d)
+		    _DEBUG=on
+		;;
+		u)
+		    username=$OPTARG
+		;;
+		p)
+		    password=$OPTARG
+		;;
+		a)
+		    AUTHJSON=$OPTARG
+		;;
+		k)
+		    APIKEYFILE=$OPTARG
+		;;
+		b)
+		    BASEURL=$OPTARG
+		;;
+		*)
+		    usage
+		;;
+	    esac
+	done
+
+	# Verify usage syntax
+	shift $((OPTIND-1))
+	if [[ -n "$1" ]]; then VenCertDN="$1"; else usage; fi
+	shift
+	if [[ -n "$1" ]]; then usage; fi
+
+	checkcredentials
+
+	# Get API key
+	getapikey
+
+	echo "{ \"CertificateDN\": \"$VenCertDN\" }" | sed -e 's/\\/\\\\/g' > $TEMPJSON
+
+	if [[ $? -ne 0 ]]
+	then
+	    echo "Couldn't create request json file: $TEMPJSON"
+	    exit 2
+	fi
+
+	debug cat $TEMPJSON
+
+	OUTPUT="$(curl -v --progress-bar --data-binary @$TEMPJSON -H "Content-Type: application/json" $BASEURL/certificates/Renew?apikey=$APIKEY 2>&1)"
+	debug echo "$OUTPUT"
+	httpRC=$(echo "$OUTPUT" | awk '/< HTTP\// {sub(".*HTTP/[0-9]\.[0-9] ",""); httprc=$1} END {print httprc}' 2>/dev/null)
+	returnmsg="$(echo "$OUTPUT" | tail -1)"
+
+	if [[ $httpRC -eq 200 ]]
+	then
+	    if [[ -n "$(echo "$returnmsg" | awk '/["]Success["]:true/ {print}')" ]]
+	    then
+		echo "Renewed certificate object: $VenCertDN"
+	    else
+		echo "Failed to renew certificate object: HTTP $httpRC"
+		echo "Recieved response: $returnmsg"
+		exit 5
+	    fi
+	else
+	    echo "Failed to renew certificate object: HTTP $httpRC"
+	    exit 5
+	fi
+
+	rm -f $TEMPJSON
+	exit 0
+    ;;
+    revoke)
+	while getopts ":du:p:a:k:b:R:fC:D" opt
+	do
+	    case $opt in
+		d)
+		    _DEBUG=on
+		;;
+		u)
+		    username=$OPTARG
+		;;
+		p)
+		    password=$OPTARG
+		;;
+		a)
+		    AUTHJSON=$OPTARG
+		;;
+		k)
+		    APIKEYFILE=$OPTARG
+		;;
+		b)
+		    BASEURL=$OPTARG
+		;;
+		R)
+		    REASON=$OPTARG
+		;;
+		f)
+		    FORCE=true
+		;;
+		C)
+		    COMMENTS=$OPTARG
+		;;
+		D)
+		    DISABLE=true
+		;;
+		*)
+		    usage
+		;;
+	    esac
+	done
+
+	# Verify usage syntax
+	shift $((OPTIND-1))
+	if [[ -n "$1" ]]; then VenCertDN="$1"; else usage; fi
+	shift
+	if [[ -n "$1" ]]; then usage; fi
+	if [[ ! "$REASON" =~ ^[1-5]$ ]]; then usage; fi
+
+	checkcredentials
+
+	# Get API key
+	getapikey
+
+	echo '{'                                                           > $TEMPJSON
+	echo "  \"CertificateDN\": \"$VenCertDN\"," | sed -e 's/\\/\\\\/g' >> $TEMPJSON
+	echo "  \"Reason\": $REASON,"                                      >> $TEMPJSON
+	DISABLE=${DISABLE:-false}
+	echo "  \"Disable\": \"$DISABLE\","                                >> $TEMPJSON
+	if [[ -n "$COMMENTS" ]]
+	then
+	    echo "  \"Comments\": \"$COMMENTS\","                          >> $TEMPJSON
+	fi
+	echo '}'                                                           >> $TEMPJSON
+
+	if [[ $? -ne 0 ]]
+	then
+	    echo "Couldn't create request json file: $TEMPJSON"
+	    exit 2
+	fi
+
+	debug cat $TEMPJSON
+
+	# confirm revocation unless -f
+	if [[ "$FORCE" != "true" ]]
+	then
+	    echo -n "Proceed with revoking this certificate? (y/n): "
+	    read answer
+	    if [[ "$answer" != "y" ]]
+	    then
+		echo "Exiting."
+		exit 0
+	    fi
+	fi
+
+	OUTPUT="$(curl -v --progress-bar --data-binary @$TEMPJSON -H "Content-Type: application/json" $BASEURL/certificates/Revoke?apikey=$APIKEY 2>&1)"
+	debug echo "$OUTPUT"
+	httpRC=$(echo "$OUTPUT" | awk '/< HTTP\// {sub(".*HTTP/[0-9]\.[0-9] ",""); httprc=$1} END {print httprc}' 2>/dev/null)
+	returnmsg="$(echo "$OUTPUT" | tail -1)"
+
+	if [[ $httpRC -eq 200 ]]
+	then
+	    if [[ -n "$(echo "$returnmsg" | awk '/["]Success["]:true/ {print}')" ]]
+	    then
+		echo "Revoked certificate object: $VenCertDN"
+	    else
+		echo "Failed to revoke certificate object: HTTP $httpRC"
+		echo "Recieved response: $returnmsg"
+		exit 5
+	    fi
+	else
+	    echo "Failed to revoke certificate object: HTTP $httpRC"
+	    exit 5
+	fi
+
+	rm -f $TEMPJSON
+	exit 0
+    ;;
+    *)
+	usage
+    ;;
+esac
+
+exit 0

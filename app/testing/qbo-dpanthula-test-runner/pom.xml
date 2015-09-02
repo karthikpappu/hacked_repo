@@ -1,0 +1,84 @@
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <parent>
+        <groupId>com.intuit.sb.qbo.dpanthula.qbo-dpanthula.tests</groupId>
+        <artifactId>qbo-dpanthula-test-parent-pom</artifactId>
+        <version>1.1.0-dev-SNAPSHOT</version>
+        <relativePath>../qbo-dpanthula-test-parent-pom</relativePath>
+    </parent>
+
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.intuit.sb.qbo.dpanthula.qbo-dpanthula.tests</groupId>
+    <artifactId>qbo-dpanthula-test-runner</artifactId>
+    <name>qbo-dpanthula-test-runner</name>
+    <version>1.1.0-dev-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <testArtifactVersion>${project.version}</testArtifactVersion>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.intuit.sb.qbo.dpanthula.qbo-dpanthula.tests</groupId>
+            <artifactId>qbo-dpanthula-service-tests</artifactId>
+            <version>${testArtifactVersion}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.intuit.sb.qbo.dpanthula.qbo-dpanthula.tests</groupId>
+            <artifactId>qbo-dpanthula-perf-tests</artifactId>
+            <version>${testArtifactVersion}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.intuit.sb.qbo.dpanthula.qbo-dpanthula.tests</groupId>
+            <artifactId>qbo-dpanthula-production-tests</artifactId>
+            <version>${testArtifactVersion}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>2.10</version>
+                <executions>
+                    <execution>
+                        <id>unpack</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>unpack</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>com.intuit.sb.qbo.dpanthula.qbo-dpanthula.tests</groupId>
+                                    <artifactId>qbo-dpanthula-service-tests</artifactId>
+                                    <type>jar</type>
+                                    <overWrite>true</overWrite>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>com.intuit.sb.qbo.dpanthula.qbo-dpanthula.tests</groupId>
+                                    <artifactId>qbo-dpanthula-perf-tests</artifactId>
+                                    <type>jar</type>
+                                    <overWrite>true</overWrite>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>com.intuit.sb.qbo.dpanthula.qbo-dpanthula.tests</groupId>
+                                    <artifactId>qbo-dpanthula-production-tests</artifactId>
+                                    <type>jar</type>
+                                    <overWrite>true</overWrite>
+                                </artifactItem>
+                            </artifactItems>
+                            <includes>**/testng*.xml</includes>
+                            <outputDirectory>${project.build.outputDirectory}</outputDirectory>
+                            <overWriteReleases>true</overWriteReleases>
+                            <overWriteSnapshots>true</overWriteSnapshots>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

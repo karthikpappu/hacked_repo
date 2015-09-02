@@ -1,0 +1,22 @@
+{
+  "name": "web",
+  "default_attributes": {
+  },
+  "json_class": "Chef::Role",
+  "env_run_lists": {
+    },
+  "run_list": [ 
+    "role[base]",
+    "recipe[application::web]"
+  ],
+  "description": "Web role",
+  "chef_type": "role",
+  "override_attributes": {
+    "nginx": {
+      "proxy_protocol": true,
+      "default_vhost": {
+        "enable": false
+      }
+    }
+  }
+}

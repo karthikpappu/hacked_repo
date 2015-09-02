@@ -1,0 +1,93 @@
+#!/bin/bash
+
+KMS_CMK_ID=16084925-4c90-493e-944c-24f6728d501f  # ID for sbg-preprod encryption key in us-west-2
+SECRETS_BUCKET=iss-sbg-preprod
+#PROXY_SERVER=qy1prdproxy01.pprod.ie.intuit.net:80
+NEWRELIC_LICENSE_SECRET_FILE=/var/tmp/newrelic_secret.txt
+S3_BUCKET=sbg-performance
+
+NEWRELIC_SYSMOND_CFG=/etc/newrelic/nrsysmond.cfg
+IPROUTE_RPM=iproute-2.6.32-130.el6ost.netns.2.x86_64
+EPEL_RELEASE_RPM=epel-release-6-8.noarch 
+SECRETS_RPM=secrets-cli-2.2.0.0
+NEWRELIC_SYSMOND_RPM=newrelic-sysmond-2.0.3.113-1.i386
+WORK_DIR=/var/tmp
+
+if [ ! -z ${PROXY_SERVER} ]; then
+  # Setup system to use proxy server
+  echo "proxy=http://${PROXY_SERVER}" >> /etc/yum.conf
+  echo "proxy = ${PROXY_SERVER}" >> ~/.curlrc 
+  echo "export HTTP_PROXY=http://${PROXY_SERVER}" >> /etc/bashrc
+  echo "export HTTPS_PROXY=http://${PROXY_SERVER}" >> /etc/bashrc
+  echo "export NO_PROXY=\"/var/run/docker.sock\"" >> /etc/bashrc
+  . /etc/bashrc
+fi
+
+echo 'export AWS_CONFIG_FILE=~/.aws/config' >> /etc/bashrc
+mkdir -p /root/.aws
+mkdir -p /var/docker-registry
+pip install pystache
+ 
+mv /etc/yum/pluginconf.d/rhui-lb.conf /var/
+mv /etc/yum.repos.d/rhui-load-balancers.conf /var/
+yum clean all
+
+rpm -q $EPEL_RELEASE_RPM
+if [ $? -ne 0 ]; then
+  echo "Installing epel release package"
+  aws s3 cp s3://${S3_BUCKET}/bootstrap/${EPEL_RELEASE_RPM}.rpm ${WORK_DIR}
+  rpm -i ${WORK_DIR}/${EPEL_RELEASE_RPM}.rpm
+fi
+
+rpm -q $IPROUTE_RPM
+if [ $? -ne 0 ]; then
+  echo "Installing iproute package"
+  aws s3 cp s3://${S3_BUCKET}/bootstrap/${IPROUTE_RPM}.rpm ${WORK_DIR}
+  rpm -i ${WORK_DIR}/${IPROUTE_RPM}.rpm
+fi
+
+rpm -q $SECRETS_RPM 2>&1 > /dev/null
+if [ $? -ne 0 ]; then
+  echo "Installing secrets management package"
+  aws s3 cp s3://${S3_BUCKET}/bootstrap/${SECRETS_RPM}.rpm ${WORK_DIR}
+  rpm -i ${WORK_DIR}/${SECRETS_RPM}.rpm
+fi 
+
+rpm -q $NEWRELIC_SYSMOND_RPM 2>&1 > /dev/null
+if [ $? -ne 0 ]; then
+  echo "Installing newrelic-sysmond package"
+  aws s3 cp s3://${S3_BUCKET}/bootstrap/${NEWRELIC_SYSMOND_RPM}.rpm ${WORK_DIR}
+  rpm -i ${WORK_DIR}/${NEWRELIC_SYSMOND_RPM}.rpm
+fi
+
+/usr/local/bin/secrets get --region us-west-2 --s3-bucket ${SECRETS_BUCKET} \
+	--kms-cmk-id ${KMS_CMK_ID} \
+	--secret-name sbg-newrelic-license \
+	--output ${NEWRELIC_LICENSE_SECRET_FILE} 2>&1 > /dev/null
+
+if [ $? -ne 0 ];then
+  echo "Failed to read secrets required to configure newrelic-sysmond"
+  exit 0;
+fi
+
+if [ -f ${NEWRELIC_LICENSE_SECRET_FILE} ]; then
+  newrelic_license=`cat ${NEWRELIC_LICENSE_SECRET_FILE}`
+
+  sed -i -e "s/license_key=REPLACE_WITH_REAL_KEY/license_key=${newrelic_license}/g" ${NEWRELIC_SYSMOND_CFG}
+  rm ${NEWRELIC_LICENSE_SECRET_FILE}
+fi
+
+
+host=`hostname`
+echo "hostname=${NEWRELIC_SERVER_NAME}-jmeter-${host}" >> ${NEWRELIC_SYSMOND_CFG}
+
+yum -y install docker-io
+
+if [ ! -z ${PROXY_SERVER} ]; then
+  sed -i -e "s/#proxy=/proxy=${PROXY_SERVER}/g" ${NEWRELIC_SYSMOND_CFG}
+  echo "export HTTP_PROXY=http://${PROXY_SERVER}" >> /etc/sysconfig/docker
+  echo "export HTTPS_PROXY=http://${PROXY_SERVER}" >> /etc/sysconfig/docker
+fi
+
+service newrelic-sysmond restart
+service docker restart

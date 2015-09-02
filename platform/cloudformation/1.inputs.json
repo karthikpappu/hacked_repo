@@ -1,0 +1,212 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Parameters": {
+    "OperatorEmail": {
+      "Type": "String",
+      "Description": "Email notification endpoint"
+    },
+    "VpcId": {
+      "Type": "String",
+      "Description": "VpcId of your existing Virtual Private Cloud (VPC)"
+    },
+    "AvailabilityZone1": {
+      "Type": "String",
+      "Description": "AvailabilityZone1"
+    },
+    "ElbSubnet1Id": {
+      "Type": "String",
+      "Description": "ElbSubnet1Id"
+    },
+    "WebSubnet1Id": {
+      "Type": "String",
+      "Description": "WebSubnet1Id"
+    },
+    "AppSubnet1Id": {
+      "Type": "String",
+      "Description": "AppSubnet1Id"
+    },
+    "DbSubnet1Id": {
+      "Type": "String",
+      "Description": "DbSubnet1Id"
+    },
+    "ProxySubnet1Id": {
+      "Type": "String",
+      "Description": "ProxySubnet1Id"
+    },
+    "BastionSubnet1Id": {
+      "Type": "String",
+      "Description": "BastionSubnet1Id"
+    },
+    "AvailabilityZone2": {
+      "Type": "String",
+      "Description": "AvailabilityZone2"
+    },
+    "ElbSubnet2Id": {
+      "Type": "String",
+      "Description": "ElbSubnet2Id"
+    },
+    "WebSubnet2Id": {
+      "Type": "String",
+      "Description": "Subnet2Id"
+    },
+    "AppSubnet2Id": {
+      "Type": "String",
+      "Description": "Subnet2Id"
+    },
+    "DbSubnet2Id": {
+      "Type": "String",
+      "Description": "Subnet2Id"
+    },
+    "ProxySubnet2Id": {
+      "Type": "String",
+      "Description": "Subnet2Id"
+    },
+    "BastionSubnet2Id": {
+      "Type": "String",
+      "Description": "Subnet2Id"
+    },
+    "SAGSecGrp": {
+      "Description": "SAG Security Group",
+      "Type": "String"
+    },
+    "EbsEncryptionKey": {
+      "Description": "KMS encryption key alias for EBS encryption",
+      "Type": "String"
+    },
+    "S3Bucket": {
+      "Description": "s3 bucket for artifacts and other purpose",
+      "Type": "String"
+    },
+    "SecretsEncryptionKey": {
+      "Description": "KMS encryption key alias for KMS encryption for secrets",
+      "Type": "String"
+    },
+    "SecretsS3Bucket": {
+      "Description": "s3 bucket for secrets",
+      "Type": "String"
+    },
+    "KeyName": {
+      "Description": "Key pair name for instance",
+      "Type": "String"
+    },
+    "Abort": {
+      "Type": "String",
+      "Description": "Cloud Formation default",
+      "Default": "no"
+    }
+   },
+  "Resources": {
+    "DummySG4Inputs": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Dummy Group used to save Inputs",
+        "VpcId": { "Ref": "VpcId" }
+      }
+    },
+    "BastionSecGrp": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Bastion Security Group",
+        "VpcId": { "Ref": "VpcId" }
+      }
+    }
+  },
+  "Outputs": {
+    "VpcId": {
+      "Value": { "Ref": "VpcId" },
+      "Description": "VpcId of your existing Virtual Private Cloud (VPC)"
+    },
+    "AvailabilityZone1": {
+      "Value": { "Ref": "AvailabilityZone1" },
+      "Description": "AvailabilityZone1"
+    },
+    "ElbSubnet1Id": {
+      "Value": { "Ref": "ElbSubnet1Id" },
+      "Description": "ElbSubnet1Id"
+    },
+    "WebSubnet1Id": {
+      "Value": { "Ref": "WebSubnet1Id" },
+      "Description": "WebSubnet1Id"
+    },
+    "AppSubnet1Id": {
+      "Value": { "Ref": "AppSubnet1Id" },
+      "Description": "AppSubnet1Id"
+    },
+    "DbSubnet1Id": {
+      "Value": { "Ref": "DbSubnet1Id" },
+      "Description": "DbSubnet1Id"
+    },
+    "ProxySubnet1Id": {
+      "Value": { "Ref": "ProxySubnet1Id" },
+      "Description": "ProxySubnet1Id"
+    },
+    "BastionSubnet1Id": {
+      "Value": { "Ref": "BastionSubnet1Id" },
+      "Description": "BastionSubnet1Id"
+    },
+    "AvailabilityZone2": {
+      "Value": { "Ref": "AvailabilityZone2" },
+      "Description": "AvailabilityZone2"
+    },
+    "ElbSubnet2Id": {
+      "Value": { "Ref": "ElbSubnet2Id" },
+      "Description": "ElbSubnet2Id"
+    },
+    "WebSubnet2Id": {
+      "Value": { "Ref": "WebSubnet2Id" },
+      "Description": "WebSubnet2Id"
+    },
+    "AppSubnet2Id": {
+      "Value": { "Ref": "AppSubnet2Id" },
+      "Description": "AppSubnet2Id"
+    },
+    "DbSubnet2Id": {
+      "Value": { "Ref": "DbSubnet2Id" },
+      "Description": "DbSubnet2Id"
+    },
+    "ProxySubnet2Id": {
+      "Value": { "Ref": "ProxySubnet2Id" },
+      "Description": "ProxySubnet2Id"
+    },
+    "BastionSubnet2Id": {
+      "Value": { "Ref": "BastionSubnet2Id" },
+      "Description": "BastionSubnet2Id"
+    },
+    "SAGSecGrp": {
+      "Value": { "Ref": "SAGSecGrp" },
+      "Description": "SAGSecGrp"
+    },
+    "BastionSecGrp": {
+      "Value": { "Ref": "BastionSecGrp" },
+      "Description": "BastionSecGrp"
+    },
+    "KeyName": {
+      "Value": { "Ref": "KeyName" },
+      "Description": "Key pair name for instance"
+    },
+    "OperatorEmail": {
+      "Value": { "Ref": "OperatorEmail" },
+      "Description": "Default Email for Notifications"
+    },
+    "EbsEncryptionKey": {
+      "Value": { "Ref": "EbsEncryptionKey" },
+      "Description": "KMS encryption key alias for EBS encryption"
+    },
+    "S3Bucket": {
+      "Value": { "Ref": "S3Bucket" },
+      "Description": "s3 bucket for artifacts and other purpose"
+    },
+    "SecretsEncryptionKey": {
+      "Value": { "Ref": "SecretsEncryptionKey" },
+      "Description": "KMS encryption key alias for KMS encryption on secrets"
+    },
+    "SecretsS3bucket": {
+      "Value": { "Ref": "SecretsS3Bucket" },
+      "Description": "s3 bucket for secrets"
+    },
+    "Abort": {
+      "Value": { "Ref": "Abort" },
+      "Description": "Cloud Formation default"
+    }
+  }
+}

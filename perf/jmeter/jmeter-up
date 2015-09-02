@@ -1,0 +1,443 @@
+#!/bin/bash -x
+#  TODO: Shutdown
+#        Tips -- Look for the following in the client logs
+# 
+#          INFO - Shutdown hook started
+#          DEBUG - jmeter.reporters.ResultCollector: Flushing: /logs/jtl.jtl
+#          INFO  - jmeter.reporters.ResultCollector: Shutdown hook ended
+#
+#        Note the assumed log level for this recipe to work.
+
+
+
+
+WORK_DIR=/var/tmp
+JMETER_BASE=${WORK_DIR}/jmeter-base
+DATA_DIR=${JMETER_BASE}/data
+SCRIPT_DIR=${JMETER_BASE}/scripts
+LOGDIR=${JMETER_BASE}/log
+
+SERVER_IMAGE=localhost:5000/jmeter-server:2.12-SBG4
+CLIENT_IMAGE=localhost:5000/jmeter-client:2.12-SBG4
+JMETER_SCRIPT=example
+NUM_SERVERS=1
+HOST_WRITE_PORT=49500
+HOST_READ_PORT=49501
+SERVER_IPS=
+PROXY_SERVER=
+NON_PROXY_HOSTS=
+JMETER_OPTIONS=
+OFFERING_NAME=sbg
+COMPONENT_NAME=apps
+S3_DOCKER_BUCKET=df-docker-registry
+BUILD_UUID=perf-test
+SPLIT_INPUT=false
+
+local_ip=
+server_position=
+
+
+function setup() {
+
+	source /etc/bashrc
+	#JMETER_SCRIPT=`echo ${JMETER_SCRIPT} | sed -e 's/\([^_]\)_\([^_]\)/\1 \2/g' -e 's/__/_/g' -e 's:/\([^/]*\) :\/\1\\\ :g'`
+	#JMETER_SCRIPT=`echo ${JMETER_SCRIPT} | sed -e 's/\([^_]\)_\([^_]\)/\1 \2/g' -e 's/__/_/g' -e 's: :\\\ :g'`
+	JMETER_SCRIPT=`echo ${JMETER_SCRIPT} | sed -e 's/\([^_]\)_\([^_]\)/\1 \2/g' -e 's/__/_/g'`
+	echo "JMETER_SCRIPT now set to : $JMETER_SCRIPT" 
+
+
+	JMETER_OPTIONS=`echo ${JMETER_OPTIONS} | sed -e 's/\([^_]\)_\([^_]\)/\1 \2/g' -e 's/__/_/g' -e 's:/\([^/]*\) :\/\1\\\ :g'`
+	echo "JMETER_OPTIONS now set to : $JMETER_OPTIONS"
+
+
+	# Create data directories
+	if [[ -d ${JMETER_BASE}/data ]] ; then
+		if [[ -d ${JMETER_BASE}/data.last ]] ; then
+			rm -fr  ${JMETER_BASE}/data.last
+		fi
+		mv ${JMETER_BASE}/data ${JMETER_BASE}/data.last
+	fi
+
+	mkdir -p ${JMETER_BASE}/data
+
+
+	# Create script directory
+	if [[ -d ${JMETER_BASE}/scripts ]] ; then
+		if [[ -d ${JMETER_BASE}/scripts.last ]] ; then
+			rm -fr  ${JMETER_BASE}/scripts.last
+		fi
+		mv ${JMETER_BASE}/scripts ${JMETER_BASE}/scripts.last
+	fi
+
+	mkdir -p ${JMETER_BASE}/scripts
+	aws s3 sync --sse s3://${S3_PERF_BUCKET}/jmeter/ ${JMETER_BASE}/scripts
+
+	
+	# Create a log directories
+	if [[ -d ${JMETER_BASE}/logs ]] ; then
+		if [[ -d ${JMETER_BASE}/logs.last ]] ; then
+			rm -fr  ${JMETER_BASE}/logs.last
+		fi
+		mv ${JMETER_BASE}/logs ${JMETER_BASE}/logs.last
+	fi
+	mkdir -p ${JMETER_BASE}/logs
+
+	if [[ "Xnone" == "X${JMETER_OPTIONS}" ]]; then
+		JMETER_OPTIONS=''
+	fi
+
+	if [[ ! -z ${PROXY_SERVER} ]] && [[ "Xnone" != "X${PROXY_SERVER}" ]]; then
+
+		proxy_host=$(echo $PROXY_SERVER | cut -f1 -d :)
+		proxy_port=$(echo $PROXY_SERVER | cut -f2 -d :)
+
+                if [[ ! -z ${proxy_host} ]] && [[ ! -z ${proxy_port} ]]; then
+                        PROXY_OPTIONS=" -H ${proxy_host} -P ${proxy_port} "
+
+                        if [[ ! -z ${NON_PROXY_HOSTS} ]] && [[ "Xnone" != "X${NON_PROXY_HOSTS}" ]]; then
+                                PROXY_OPTIONS="${PROXY_OPTIONS} -N ${NON_PROXY_HOSTS}"
+                        fi
+
+                        JMETER_OPTIONS="${PROXY_OPTIONS} ${JMETER_OPTIONS}"
+                fi
+	fi
+	
+        local_ip=`ifconfig eth0  |  sed -En 's/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\.){3}[0-9]*).*/\2/p'`
+
+
+        if $SPLIT_INPUT ; then
+		split_input_file
+	fi
+
+
+}
+
+
+function split_input_file() {
+	
+
+        stack_group_ips=$(aws ec2 describe-instances --output text --filters "Name=tag-value, Values=${OFFERING_NAME}-${COMPONENT_NAME}*" --query 'Reservations[*].Instances[*].[PrivateIpAddress]'  --region=us-west-2 | egrep -iv None | sort -t . -k 1,1n -k 2,2n -k 3,3n -k 4,4n)
+        
+        count=0
+        for ip in $stack_group_ips;
+        do
+         let "count++"
+         if [ "X${ip}" == "X${local_ip}" ]; then
+            server_position=$count
+         fi
+        done
+
+	if [ $count -eq 1 ] && [ $NUM_SERVERS -eq 1 ]; then
+	  echo "No split possible. Stack group ${OFFERING_NAME}-${COMPONENT_NAME} has only $count EC2 server and $NUM_SERVERS jmeter-server container." 
+	  return
+	else
+	  echo "Stack group ${OFFERING_NAME}-${COMPONENT_NAME} has $count EC2 servers running $NUM_SERVERS jmeter-server containers."
+
+          echo "This server has ip address $local_ip and is in position $server_position"
+
+          csv_regex="/(.*).csv"
+
+	  input_file=
+	  regex="[0-9]+_([a-z]+)_[0-9a-z]*"
+	  for f in $JMETER_OPTIONS
+	  do
+    	    [[ $f =~ $csv_regex ]]
+    	      if [ $? -eq 0 ];then
+      	        regex_match="${BASH_REMATCH[1]}"
+      	        input_file="${regex_match}.csv"
+    
+  	        echo "Found input file in JMETER_OPTIONS: ${input_file}"
+    
+                if [[ -f ${JMETER_BASE}/${input_file} ]]; then
+  
+                  sed -i -e 's/\r/\n/g' ${JMETER_BASE}/$input_file
+
+  	          total_lines=`wc -l ${JMETER_BASE}/$input_file  |awk '{print \$1}'`
+  	          ((lines_per_file = (total_lines + count - 1) / count))
+        
+		  input_file_name=`basename $input_file`
+  	          echo "split -d --lines=${lines_per_file} ${JMETER_BASE}/$input_file ${input_file_name}-ec2-split-"
+  	          split -d --lines=${lines_per_file} ${JMETER_BASE}/$input_file ${input_file_name}-ec2-split-
+          
+                  let "server_position--"
+                  ec2_split_suffix=$(printf %02d%s ${server_position%.*} )
+                  cp ${WORK_DIR}/${input_file_name}-ec2-split-$ec2_split_suffix ${JMETER_BASE}/${input_file}
+  
+
+                  # Split user file for containers
+                  if [ $NUM_SERVERS -eq 1 ]; then
+                    echo "Skipping container split. Stack group only running $NUM_SERVERS jmeter-server container per host."
+                    return 
+                  fi
+
+  	          total_lines_ec2_split=`wc -l ${WORK_DIR}/${input_file_name}-ec2-split-$ec2_split_suffix  |awk '{print \$1}'`
+  	          ((lines_per_file = (total_lines_ec2_split + NUM_SERVERS - 1) / NUM_SERVERS + 1))
+
+		  input_file_dir=`dirname $input_file`
+  	          echo "split -d --lines=${lines_per_file} ${WORK_DIR}/${input_file_name}-ec2-split-$ec2_split_suffix  ${input_file_name}-docker-split-"
+  	          split -d --lines=${lines_per_file} ${WORK_DIR}/${input_file_name}-ec2-split-$ec2_split_suffix  ${input_file_name}-docker-split-
+
+	          n=0
+	          while [[ ${n} -lt ${NUM_SERVERS} ]]
+	          do
+                          docker_split_suffix=$(printf %02d%s ${n%.*} )
+		          mkdir -p ${JMETER_BASE}/${docker_split_suffix} 
+                          cp -R ${SCRIPT_DIR} ${JMETER_BASE}/${docker_split_suffix}/
+                          echo "cp ${WORK_DIR}/${input_file_name}-docker-split-$docker_split_suffix ${JMETER_BASE}/${docker_split_suffix}/${input_file}"
+                          cp ${WORK_DIR}/${input_file_name}-docker-split-$docker_split_suffix ${JMETER_BASE}/${docker_split_suffix}/${input_file}
+          	          n=$((${n} + 1))
+	          done
+
+                else
+                  echo "${JMETER_BASE}/${input_file} innaccessible"
+                fi
+      	     fi
+	  done
+ 	fi
+}
+
+
+
+function validate_env() {
+	if [[ ! -d ${JMETER_BASE} ]] ; then
+	  echo "The working jmeter base directory '${JMETER_BASE}' does not exist"
+		usage
+		exit 1
+	fi
+	if [[ ! -d ${DATA_DIR} ]] ; then
+	  echo "The data directory '${DATA_DIR}' does not exist"
+		usage
+		exit 2
+	fi
+	if [[ ! -d ${SCRIPT_DIR} ]] ; then
+	  	echo "The data directory ${SCRIPT_DIR} does not exist"
+		usage
+		exit 2
+	fi
+	if [ ! -f "${SCRIPT_DIR}/${JMETER_SCRIPT}" ] ; then
+	        echo "The script file ${SCRIPT_DIR}/${JMETER_SCRIPT} does not exist"
+		usage
+		exit 3
+	fi
+	if [[ ${NUM_SERVERS} -lt 1 ]]; then
+		echo "Must start at least 1 JMeter server."
+		usage
+		exit 4
+	fi
+    	if [[ -z ${S3_PERF_BUCKET} ]]; then
+		echo "Must specify an S3 bucket to store perf logs"
+		usage
+		exit 5
+	fi
+	if [[ -z ${S3_DOCKER_BUCKET} ]]; then
+		echo "Must specify an S3 bucket of the Docker registry"
+		usage
+		exit 6
+	fi
+}
+
+
+
+function stop_servers() {
+	n=1
+	while [[ ${n} -le ${NUM_SERVERS} ]]
+	do
+		docker stop jmeter-server-${n}
+		docker rm jmeter-server-${n}
+          	n=$((${n} + 1))
+	done
+}
+
+
+function cleanup_containers() {
+
+	n=1
+	while [[ ${n} -le ${NUM_SERVERS} ]]
+	do
+		if $(docker inspect jmeter-server-${n} 2>1 > /dev/null); then
+		  docker stop jmeter-server-${n}
+		  docker rm jmeter-server-${n}
+		fi
+          	n=$((${n} + 1))
+	done
+
+	if $(docker inspect jmeter-client 2>1 > /dev/null); then
+		docker stop jmeter-client
+		docker rm jmeter-client
+	fi
+
+}
+
+
+function jmeter_is_up() {
+
+	docker ps |grep jmeter-client
+	return $?
+}
+
+
+function watch_client_logs() {
+
+	LOG_FILE=$1
+	SECONDS_IN_A_DAY=86400
+	FILE_AGE_LIMIT=600 
+	SLEEP_INTERVAL=10
+
+	while true
+	do
+		sleep $SLEEP_INTERVAL
+		now=`date +%s`
+		file_mtime=`stat -c%X ${LOG_FILE}`
+
+		if [[ -f ${LOG_FILE} ]]; then
+			let file_age=($now - $file_mtime)
+			echo "JMeter result log inactive for $file_age seconds. limit = ${FILE_AGE_LIMIT} "
+	
+			if (( $file_age > $FILE_AGE_LIMIT )) || ! jmeter_is_up ;then
+				echo "JMeter test pronounced dead at $file_age seconds. limit was ${FILE_AGE_LIMIT}"
+				cleanup_containers
+				upload_logs
+				break
+			fi
+		fi
+	done
+
+}
+
+
+function upload_logs() {
+
+
+	#local_ip=`ifconfig eth0  |  sed -En 's/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\.){3}[0-9]*).*/\2/p'`
+	aws s3 cp ${LOGDIR}/jtl.jtl s3://${S3_PERF_BUCKET}/jtl/${OFFERING_NAME}/${COMPONENT_NAME}/${BUILD_UUID}/${local_ip}.jtl
+	aws s3 cp ${LOGDIR}/jmeter.log s3://${S3_PERF_BUCKET}/logs/${OFFERING_NAME}/${COMPONENT_NAME}/${BUILD_UUID}/${local_ip}.jmeter.log
+
+	touch ${LOGDIR}/fin
+	aws s3 cp ${LOGDIR}/fin s3://${S3_PERF_BUCKET}/logs/${OFFERING_NAME}/${COMPONENT_NAME}/${BUILD_UUID}/${local_ip}.fin
+
+
+}
+
+
+
+function start_servers() {
+	n=1
+	while [[ ${n} -le ${NUM_SERVERS} ]]
+	do
+
+            if $SPLIT_INPUT ; then
+	  	i=$((${n} - 1))
+                docker_split_suffix=$(printf %02d%s ${i%.*} )
+                SCRIPT_DIR=${JMETER_BASE}/${docker_split_suffix}/scripts
+	    fi
+
+
+		# Create a log directory for the server
+		LOGDIR=${JMETER_BASE}/logs/${n}
+	  	mkdir -p ${LOGDIR}
+	
+		# Start the server container
+		echo "Starting jmeter-server-${n} ... -v ${SCRIPT_DIR}:/scripts -v ${DATA_DIR}:/input_data ${SERVER_IMAGE} ${JMETER_OPTIONS}"
+		docker run \
+			-d \
+			--net=bridge \
+			--name=jmeter-server-${n} \
+			-p 0.0.0.0:${HOST_READ_PORT}:1099 \
+			-p 0.0.0.0:${HOST_WRITE_PORT}:60000 \
+			-v ${LOGDIR}:/logs \
+			-v ${DATA_DIR}:/input_data \
+		        -v ${SCRIPT_DIR}:/scripts \
+			${SERVER_IMAGE} -X -n -l /logs/remote.jtl -LDEBUG ${JMETER_OPTIONS}
+		err=$?
+		if [[ ${err} -ne 0 ]] ; then
+			echo "Error '${err}' while starting a jmeter server. Quitting"
+			exit ${err}
+		fi
+
+		# Prepare for next server
+	  	n=$((${n} + 1))
+		HOST_READ_PORT=$((${HOST_READ_PORT} +  2))
+		HOST_WRITE_PORT=$((${HOST_WRITE_PORT} + 2))
+	done
+}
+
+
+function start_client() {
+
+
+	server_ips
+	LOGDIR=${JMETER_BASE}/logs/client
+	mkdir -p ${LOGDIR}
+	echo "${CLIENT_IMAGE} -X -n -t \"/scripts/${JMETER_SCRIPT}\" -l /logs/jtl.jtl -LDEBUG -R${SERVER_IPS} ${JMETER_OPTIONS} "
+	docker run \
+		--name=jmeter-client \
+		--net=bridge \
+		-v ${LOGDIR}:/logs \
+		-v ${DATA_DIR}:/input_data \
+		-v ${SCRIPT_DIR}:/scripts \
+		${CLIENT_IMAGE} -X -n -t "/scripts/${JMETER_SCRIPT}" -l /logs/jtl.jtl -LDEBUG -R${SERVER_IPS} ${JMETER_OPTIONS} 
+	watch_client_logs ${LOGDIR}/jtl.jtl &
+}
+
+
+function server_ips() {
+	for pid in $(docker ps | grep ${SERVER_IMAGE} | awk '{print $1}')
+	do
+	
+	  # Get the IP for the current pid
+	  x=$(docker inspect --format '{{ .NetworkSettings.IPAddress }}' ${pid})
+	
+		# Append to SERVER_IPS
+		if [[ ! -z "${SERVER_IPS}" ]]; then
+			SERVER_IPS=${SERVER_IPS},
+		fi
+		SERVER_IPS=${SERVER_IPS}$x
+	done
+        #echo "SERVER_IPS=${SERVER_IPS}"
+}
+
+
+function usage() {
+  echo "Usage:"
+	echo "-d      The data directory for data files used by the Jmeter script."
+	echo "-h      This help message"
+	echo "-n      The number of jmeter dockers"
+	echo "-P      The proxy server to use. Format: host:port"
+	echo "-s      The Jmeter script"
+	echo "-w      The working directory. Logs are relative to it."
+}
+
+
+while getopts :b:c:d:D:hj:N:n:o:P:u:s:w: opt
+do
+	case ${opt} in
+		b) S3_PERF_BUCKET=${OPTARG} ;;
+		c) COMPONENT_NAME=${OPTARG} ;;
+		D) S3_DOCKER_BUCKET=${OPTARG} ;;
+		d) DATA_DIR=${OPTARG} ;;
+		h) usage && exit 0 ;;
+		j) JMETER_OPTIONS=${OPTARG}  ;;
+		N) NON_PROXY_HOSTS=${OPTARG} ;;
+		n) NUM_SERVERS=${OPTARG} ;;
+		o) OFFERING_NAME=${OPTARG} ;;
+		P) PROXY_SERVER=${OPTARG} ;;
+		s) JMETER_SCRIPT=${OPTARG} ;;
+		u) BUILD_UUID=${OPTARG} ;;
+		w) JMETER_BASE=${OPTARG} ;;
+		:) echo "The -${OPTARG} option requires a parameter"
+			 exit 1 ;;
+		?) echo "Invalid option: -${OPTARG}"
+			 exit 1 ;;
+	esac
+done
+shift $((OPTIND -1))
+
+
+# Let the perf testing commence...
+setup
+validate_env
+cleanup_containers
+start_servers
+start_client
+cleanup_containers
+upload_logs

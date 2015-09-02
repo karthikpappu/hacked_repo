@@ -1,0 +1,126 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+
+  "Description": "Public ELB with HTTP/HTTPS termination support in an existing VPC.",
+
+  "Parameters": {
+
+    "VpcId": {
+      "Type": "String",
+      "Description": "ID of your existing VPC"
+    },
+    "SubnetIds": {
+      "Type": "CommaDelimitedList",
+      "Description": "Public Subnet Ids"
+    },
+    "WebElbAccessSecurityGroup": {
+      "Type": "String",
+      "Description": "Security group ID for the load balanced public traffic"
+    },
+    "WebAccessSecurityGroup": {
+      "Type": "String",
+      "Description": "Security group ID that grants access to the web tier"
+    },
+    "HttpInstancePort": {
+      "Type": "String",
+      "Default": "80",
+      "Description": "Port to forward traffic to"
+    },
+    "HttpsInstancePort": {
+      "Type": "String",
+      "Default": "443",
+      "Description": "Port to forward traffic to"
+    },
+    "HealthCheckProtocol": {
+      "Type": "String",
+      "Default": "TCP",
+      "Description": "Protocol to use for health checks"
+    },
+    "HealthCheckURL": {
+      "Type": "String",
+      "Default": "/index.html",
+      "Description": "relative URL to ping for health checks"
+    },
+    "HealthCheckResponseTimeout": {
+      "Type": "String",
+      "Default": "5",
+      "Description": "Seconds before timing out health checks"
+    },
+    "HealthCheckInterval": {
+      "Type": "String",
+      "Default": "10",
+      "Description": "Interval, in seconds, to execute health checks"
+    },
+    "HealthCheckHealthyThreshold": {
+      "Type": "String",
+      "Default": "3",
+      "Description": "Number of consecutive succesful health checks before marking as healthy"
+    },
+    "HealthCheckUnhealthyThreshold": {
+      "Type": "String",
+      "Default": "5",
+      "Description": "Number of consecutive unsuccesful health checks before marking as unhealthy"
+    },
+    "ElbScheme": {
+      "Type": "String",
+      "Default": "internal",
+      "Description": "Specifies internal or internet-facing ELB"
+    }
+  },
+  "Resources": {
+
+    "ELB": {
+      "Type": "AWS::ElasticLoadBalancing::LoadBalancer",
+      "Properties": {
+        "SecurityGroups": [ { "Ref": "WebAccessSecurityGroup" },
+                            { "Ref": "WebElbAccessSecurityGroup" } ],
+        "Subnets": { "Ref" : "SubnetIds" },
+        "Scheme": { "Ref": "ElbScheme" },
+        "Listeners": [
+          {
+            "LoadBalancerPort": { "Ref": "HttpInstancePort" },
+            "InstancePort": { "Ref": "HttpInstancePort" },
+            "Protocol": "HTTP"
+          },
+          {
+            "LoadBalancerPort": { "Ref": "HttpsInstancePort" },
+            "InstancePort": { "Ref": "HttpsInstancePort" },
+            "Protocol": "TCP"
+          }
+        ],
+        "Policies" : [{
+               "PolicyName" : "EnableProxyProtocol",
+               "PolicyType" : "ProxyProtocolPolicyType",
+               "Attributes" : [{
+                  "Name"  : "ProxyProtocol",
+                  "Value" : "true"
+               }],
+               "InstancePorts" : [{ "Ref": "HttpsInstancePort" }]
+            }],
+        "HealthCheck": {
+          "Target": { "Fn::Join": [ "", [ { "Ref": "HealthCheckProtocol" }, ":",
+                                          { "Ref": "HttpsInstancePort" } ] ] },
+          "HealthyThreshold": { "Ref": "HealthCheckHealthyThreshold" },
+          "UnhealthyThreshold": { "Ref": "HealthCheckUnhealthyThreshold" },
+          "Interval": { "Ref": "HealthCheckInterval" },
+          "Timeout": { "Ref": "HealthCheckResponseTimeout" }
+        },
+        "AccessLoggingPolicy": {
+          "S3BucketName": { "Fn::Join" : [ "", [ "robot-h-t003-", { "Ref" : "AWS::Region" } ] ] },
+          "Enabled": "true",
+          "EmitInterval" : "5"
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "WebLoadBalancerName": {
+      "Description": "Name of the ELB",
+      "Value": { "Ref": "ELB" }
+    },
+    "WebLoadBalancerDNSName": {
+      "Description": "DNS name of ELB",
+      "Value": { "Fn::GetAtt": [ "ELB", "DNSName" ]}
+    }
+  }
+}

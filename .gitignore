@@ -1,0 +1,29 @@
+*~
+*#
+.#*
+\#*#
+.*.sw[a-z]
+*.un~
+pkg/
+
+# gradle
+jenkins/build
+jenkins/.gradle
+
+# Berkshelf
+.vagrant
+/cookbooks
+Berksfile.lock
+
+# Bundler
+Gemfile.lock
+bin/*
+.bundle/*
+.kitchen/
+.kitchen.local.yml
+chef-repo.zip
+vendor
+JSD-App.jar
+app/webapp/target
+*.pyc
+egress_config

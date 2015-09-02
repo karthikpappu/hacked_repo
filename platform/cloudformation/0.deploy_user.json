@@ -1,0 +1,89 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+
+  "Description" : "AWS CloudFormation create the deploy user and its policy.",
+
+  "Parameters" : 
+  {
+  },
+
+  "Resources" : {
+    "SlingshotUser" : {
+      "Type" : "AWS::IAM::User",
+      "Properties" : {
+      }
+    },
+
+    "SlingshotUserPolicies" : {
+      "Type" : "AWS::IAM::Policy",
+      "Properties" : {
+        "PolicyName" : "SlingshotUser",
+        "PolicyDocument" : {
+          "Statement": [{
+            "Effect"   : "Allow",
+            "Action"   : [
+              "cloudformation:Describe*",
+              "cloudformation:List*",
+              "cloudformation:Get*",
+              "cloudformation:CreateStack",
+              "cloudformation:ValidateTemplate"
+              ],
+            "Resource" : "*"
+          },
+          {
+          "Effect": "Allow",
+          "Action": [
+            "iam:CreateAccessKey",
+            "iam:DeleteAccessKey",
+            "iam:List*",
+            "iam:Get*"
+          ],
+          "Resource": { "Fn::GetAtt" : [ "SlingshotUser" , "Arn" ] }
+          },
+          {
+            "Sid": "Allow access for Key Administrators",
+            "Effect": "Allow",
+            "Principal": { "Fn::GetAtt" : [ "SlingshotUser" , "Arn" ] },
+            "Action": [
+              "kms:Create*",
+              "kms:Describe*",
+              "kms:Enable*",
+              "kms:List*",
+              "kms:Put*",
+              "kms:Update*",
+              "kms:Revoke*",
+              "kms:Disable*",
+              "kms:Get*",
+              "kms:Delete*"
+            ],
+            "Resource": "*"
+          }
+      ]
+        },
+        "Users" : [{ "Ref" : "SlingshotUser" }]
+      }
+    },
+
+    "SlingshotKeys" : {
+      "Type" : "AWS::IAM::AccessKey",
+      "Properties" : {
+        "UserName" : { "Ref": "SlingshotUser" }
+      }
+    }
+    },
+
+  "Outputs" : {
+    "IamUser" : {
+      "Value" : { "Ref" : "SlingshotUser" },
+      "Description" : "ARN of new user"
+      },
+    "AccessKey" : {
+      "Value" : { "Ref" : "SlingshotKeys" },
+      "Description" : "AWSAccessKeyId of new user"
+    },
+    "SecretKey" : {
+      "Value" : { "Fn::GetAtt" : ["SlingshotKeys", "SecretAccessKey"]},
+      "Description" : "AWSSecretKey of new user"
+    }
+  }
+}

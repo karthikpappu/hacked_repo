@@ -1,0 +1,4 @@
+#!/bin/sh
+export LOG_FILE_DIR="/usr/local/tomcat/logs"
+export LOG4J_CONSOLE_THRESHOLD=ERROR
+export JAVA_OPTS="$JAVA_OPTS -javaagent:/usr/local/tomcat/newrelic/newrelic.jar -Xms2570M -Xmx2570M -XX:PermSize=256m -XX:MaxPermSize=512m"
